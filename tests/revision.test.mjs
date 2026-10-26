@@ -397,3 +397,28 @@ test("verify-output accepts a revision rendered by this skill and flags a modifi
   const edited = await verifyOutput({ "out-dir": f.out });
   assert.ok(edited.issues.some((i) => i.code === "ARTIFACT_MISMATCH"));
 });
+
+test("round 5: when cleanup of a failed fresh revision partly fails, the original error is kept and names what is left", async (t) => {
+  const { outputTransaction } = await import("../lib/output.mjs");
+  const { loadBundle } = await import("../lib/validation.mjs");
+  const { AppError } = await import("../lib/io.mjs");
+  const { chmod } = await import("node:fs/promises");
+  const f = await fixture();
+  t.after(async () => {
+    await chmod(path.join(f.out, "stuck"), 0o755).catch(() => {});
+    await rm(f.root, { recursive: true, force: true });
+  });
+  const bundle = await loadBundle(f.args);
+  await assert.rejects(
+    outputTransaction(bundle, f.args, async (context) => {
+      await mkdir(path.join(context.out, "stuck"));
+      await writeFile(path.join(context.out, "stuck", "a.jpg"), "x");
+      await writeFile(path.join(context.out, "removable.txt"), "x");
+      await chmod(path.join(context.out, "stuck"), 0o555);
+      throw new AppError("EXPORT_FAILED", "Injected failure.");
+    }),
+    (e) => e.code === "EXPORT_FAILED" && /Cleanup could not remove: stuck/.test(e.message),
+  );
+  const { readdir } = await import("node:fs/promises");
+  assert.deepEqual((await readdir(f.out)).filter((n) => n !== ".write.lock"), ["stuck"], "everything else was still removed");
+});

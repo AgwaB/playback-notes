@@ -6,11 +6,14 @@ import {
   lstat,
   mkdir,
   readdir,
+  readFile,
   readlink,
+  rename,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isMain, optionsFor, result, runCli } from "../lib/cli.mjs";
 import { AppError, exists, issue } from "../lib/io.mjs";
@@ -52,38 +55,97 @@ async function setWritable(target, writable) {
  */
 export async function install(options) {
   const source = fileURLToPath(new URL("..", import.meta.url));
+  const home = (value) => value.replace(/^~(?=\/|$)/, os.homedir());
   const target = path.resolve(
-    options.target ??
-      path.join(os.homedir(), ".agents", "skills", "video-summarizer"),
+    options.target
+      ? home(options.target)
+      : path.join(os.homedir(), ".agents", "skills", "video-summarizer"),
   );
   if (path.resolve(source) === target)
     throw new AppError("INVALID_CONTRACT", "Target is the source tree.", 4);
+  // Only a previous install (a regular, well-formed marker file) may be replaced.
   if (await exists(target)) {
-    if (!(await exists(path.join(target, MARKER))))
+    let owned = false;
+    try {
+      const info = await lstat(path.join(target, MARKER));
+      const marker = info.isFile()
+        ? JSON.parse(await readFile(path.join(target, MARKER), "utf8"))
+        : null;
+      owned =
+        typeof marker?.sha256 === "string" &&
+        /^[a-f0-9]{64}$/.test(marker.sha256) &&
+        typeof marker.source === "string";
+    } catch {
+      owned = false;
+    }
+    if (!owned)
       throw new AppError(
         "OUTPUT_EXISTS",
         `${target} exists and is not a previous install; remove it or choose another --target.`,
         3,
       );
-    await setWritable(target, true);
-    await rm(target, { recursive: true, force: true });
   }
-  await mkdir(target, { recursive: true });
-  // `withDependencies: false` is an offline-test seam (skips copying node_modules).
-  for (const part of PARTS.filter(
-    (p) => options.withDependencies !== false || p !== "node_modules",
-  ))
-    if (await exists(path.join(source, part)))
-      await cp(path.join(source, part), path.join(target, part), {
-        recursive: true,
-        verbatimSymlinks: true,
-      });
+  // Build the complete read-only copy beside the target, then swap: a failure at any
+  // stage leaves the previous install untouched and usable.
+  const stamp = randomUUID().slice(0, 8);
+  const staging = `${target}.staging-${stamp}`;
   const identity = await rendererIdentity();
-  await writeFile(
-    path.join(target, MARKER),
-    `${JSON.stringify({ ...identity, source, installedAt: new Date().toISOString() }, null, 2)}\n`,
-  );
-  await setWritable(target, false);
+  try {
+    await mkdir(staging, { recursive: true });
+    // `withDependencies: false` is an offline-test seam (skips copying node_modules).
+    for (const part of PARTS.filter(
+      (p) => options.withDependencies !== false || p !== "node_modules",
+    ))
+      if (await exists(path.join(source, part)))
+        await cp(path.join(source, part), path.join(staging, part), {
+          recursive: true,
+          verbatimSymlinks: true,
+        });
+    await writeFile(
+      path.join(staging, MARKER),
+      `${JSON.stringify({ ...identity, source, installedAt: new Date().toISOString() }, null, 2)}\n`,
+    );
+    await setWritable(staging, false);
+  } catch (error) {
+    await setWritable(staging, true).catch(() => {});
+    await rm(staging, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+  // macOS refuses to rename a directory that is itself read-only, so only the two top
+  // directories are made writable for the swap and read-only again afterwards.
+  const topWritable = (dir, on) => chmod(dir, on ? 0o755 : 0o555);
+  const previous = (await exists(target)) ? `${target}.previous-${stamp}` : null;
+  if (previous) {
+    await topWritable(target, true);
+    await rename(target, previous);
+  }
+  try {
+    await topWritable(staging, true);
+    await rename(staging, target);
+    await topWritable(target, false);
+  } catch (error) {
+    if (previous && !(await exists(target))) {
+      await rename(previous, target);
+      await topWritable(target, false).catch(() => {});
+    }
+    await setWritable(staging, true).catch(() => {});
+    await rm(staging, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+  const cleanupIssues = [];
+  if (previous)
+    try {
+      await setWritable(previous, true);
+      await rm(previous, { recursive: true, force: true });
+    } catch {
+      cleanupIssues.push(
+        issue(
+          "PREVIOUS_INSTALL_LEFT",
+          `The new install is in place; the previous copy could not be removed: ${previous}`,
+          "warning",
+        ),
+      );
+    }
   const links = (options.link ?? "")
     .split(",")
     .map((l) => l.trim())
@@ -119,6 +181,7 @@ export async function install(options) {
       ),
     );
   }
+  issues.push(...cleanupIssues);
   issues.unshift(
     issue(
       "INSTALLED",

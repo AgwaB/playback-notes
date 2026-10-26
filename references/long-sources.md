@@ -33,9 +33,9 @@ Rules enforced by `scripts/notes.mjs`: the hash must match the real `evidence.js
 node "$SKILL/scripts/notes.mjs" --evidence "$JOB/evidence.json" --notes-dir "$JOB/notes" --work-dir "$JOB" --analysis "$JOB/analysis-ledger.json" --update-ledger
 ```
 
-This validates every note, writes `notes-digest.md` (chunk order, each claim/quote with its `[seg-id @time]` citations) and, when all notes validate, records the noted chunks in `analysis-ledger.json` (`complete` only when every chunk has a note; otherwise `partial` with the missing chunks named). A single bad note stops the ledger update and is reported per file.
+This validates every note, writes `notes-digest.md` (chunk order, each claim/quote with its `[seg-id @time]` citations) and, when all notes validate, adds the noted chunks to `analysis-ledger.json`'s reviewed set, which is cumulative: chunks already recorded as reviewed (by the host or by an earlier notes run) stay reviewed, and the ledger is `complete` once every chunk is covered, otherwise `partial` with the still-unreviewed chunks named. Concurrent notes runs on one ledger are serialised. A single bad note stops the ledger update and is reported per file.
 
-Author `report.json` from the digest: reuse the digest's segment citations for each statement, and prefer the digest's verbatim quotes for `verbatim: true` quote blocks. Then validate, render and export as usual. The report may cite only chunks that carry validated notes.
+Author `report.json` from the digest: reuse the digest's segment citations for each statement, and prefer the digest's verbatim quotes for `verbatim: true` quote blocks. Then validate, render and export as usual. The report may cite only chunks recorded as reviewed in the ledger.
 
 ## Measured
 

@@ -27,6 +27,6 @@
 
 - [ ] Public manifest is `completed` for all requested formats; otherwise report incomplete with exact missing outputs.
 - [ ] Private work/cache/source files are outside the public root.
-- [ ] User understands that HTML contains transcript text and local media is normally not included.
+- [ ] User understands that HTML contains the full transcript unless `publishTranscript` is false (the report's own quotes always), and that local media is normally not included.
 - [ ] The loopback server is not exposed externally and is stopped when no longer needed.
 - [ ] No unsupported host, OS, live YouTube or ASR compatibility is claimed.

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { open } from "node:fs/promises";
 import { isMain, optionsFor, required, result, runCli } from "../lib/cli.mjs";
 import {
   AppError,
@@ -40,7 +41,27 @@ export async function scaffold(options) {
     sections: [],
     caveats: [],
   };
-  await atomicWrite(options["work-dir"], "report.json", jsonBytes(skeleton));
+  if (options.force)
+    await atomicWrite(options["work-dir"], "report.json", jsonBytes(skeleton));
+  else {
+    // Exclusive create: a report written by someone else since the check above is never
+    // replaced without --force.
+    let handle;
+    try {
+      handle = await open(reportPath, "wx", 0o600);
+    } catch {
+      throw new AppError(
+        "OUTPUT_EXISTS",
+        "report.json already exists; edit it, or pass --force to replace it with a new skeleton.",
+        3,
+      );
+    }
+    try {
+      await handle.writeFile(jsonBytes(skeleton));
+    } finally {
+      await handle.close();
+    }
+  }
   const segments = evidence.segments;
   const card = [
     `report.json skeleton written for ${evidence.id} (mode ${request.mode}, language ${request.outputLanguage}); evidenceRef is already correct — do not recompute it.`,

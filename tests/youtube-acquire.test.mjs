@@ -233,8 +233,24 @@ test("the original language (default audio track) beats a translation listed fir
   const b = await fetchYoutubeCaptions(videoId, network, ["ja"]);
   assert.equal(b.language, "ja", "an explicit preference still wins over the original language");
   const { rankCaptionTracks, originalCaptionLanguage } = await import("../lib/caption-tracks.mjs");
-  assert.equal(originalCaptionLanguage(multi().captions.playerCaptionsTracklistRenderer), "en-us");
-  assert.equal(originalCaptionLanguage({ captionTracks: [] }), null);
+  assert.equal(originalCaptionLanguage(multi()), "en-us", "caption renderer default audio track as the last fallback");
+  assert.equal(originalCaptionLanguage({ captions: { playerCaptionsTracklistRenderer: { captionTracks: [] } } }), null);
+  // Review round 5: a dubbed default must not be taken for the original. The player marks
+  // the original in the (localized) display name, as yt-dlp reads it.
+  const dubbed = {
+    streamingData: { adaptiveFormats: [
+      { audioTrack: { id: "ko.9", displayName: "한국어", audioIsDefault: true } },
+      { audioTrack: { id: "en-US.4", displayName: "영어 (US) 원본", audioIsDefault: false } },
+    ] },
+    captions: { playerCaptionsTracklistRenderer: { audioTracks: [{ audioTrackId: "ko.9" }], defaultAudioTrackIndex: 0 } },
+  };
+  assert.equal(originalCaptionLanguage(dubbed), "en-us");
+  dubbed.streamingData.adaptiveFormats[1].audioTrack.displayName = "English (United States) original";
+  assert.equal(originalCaptionLanguage(dubbed), "en-us");
+  // Without an "original" mark, the stream flagged default is used (documented as default).
+  dubbed.streamingData.adaptiveFormats[1].audioTrack.displayName = "English";
+  assert.equal(originalCaptionLanguage(dubbed), "ko");
+  assert.equal(originalCaptionLanguage({ captions: { playerCaptionsTracklistRenderer: { audioTracks: [{ audioTrackId: "en" }], defaultAudioTrackIndex: 7 } } }), null, "out-of-range index");
   // Without a reported original language, platform order is kept (F9 behaviour unchanged).
   assert.deepEqual(rankCaptionTracks([{ languageCode: "ko", automatic: false }, { languageCode: "en", automatic: false }], []).map((t) => t.languageCode), ["ko", "en"]);
 });
@@ -503,8 +519,9 @@ test("hostile worker output never crashes the parent: garbage, giant lines, cont
 
 test("confined worker command: no network, no writes, no reads outside its code, no child processes or workers", {
   skip: process.platform !== "darwin" && "macOS sandbox-exec only",
-}, async () => {
-  const root = await tmp("confined-");
+}, async (t) => {
+  // Node's permission checks are lexical; use the real path (tmp is under /var → /private/var).
+  const root = await (await import("node:fs/promises")).realpath(await tmp("confined-"));
   const http = await import("node:http");
   const server = http
     .createServer((_, res) => res.end("leak"))
@@ -523,10 +540,20 @@ test("confined worker command: no network, no writes, no reads outside its code,
       try { new (process.getBuiltinModule("node:worker_threads").Worker)("1", { eval: true }); r.worker = "ALLOWED"; } catch (e) { r.worker = e.code; }
       try { await fetch("http://127.0.0.1:${server.address().port}/"); r.local = "ALLOWED"; } catch (e) { r.local = e.cause?.code ?? e.name; }
       try { await fetch("https://www.youtube.com/", { signal: AbortSignal.timeout(5000) }); r.net = "ALLOWED"; } catch (e) { r.net = e.cause?.code ?? e.name; }
+      // A symlink inside the allowed code tree must not reach home-directory data (OS layer).
+      try { fs.readFileSync(${JSON.stringify(path.join(root, "code", "link"))}, "utf8"); r.symlink = "ALLOWED"; } catch (e) { r.symlink = e.code; }
+      try { r.inside = fs.readFileSync(${JSON.stringify(path.join(root, "code", "inside.txt"))}, "utf8"); } catch (e) { r.inside = e.code; }
       process.send(r, () => process.exit(0));
     `,
     );
-    const command = confinedNodeCommand(probe);
+    // Allowed code tree with a legitimate file and a symlink to a file in the account home.
+    await mkdir(path.join(root, "code"));
+    await writeFile(path.join(root, "code", "inside.txt"), "inside");
+    const homeSecret = path.join(os.homedir(), `.vs-confined-test-${process.pid}`);
+    await writeFile(homeSecret, "home secret");
+    await symlink(homeSecret, path.join(root, "code", "link"));
+    t.after?.(() => rm(homeSecret, { force: true }));
+    const command = confinedNodeCommand(probe, [path.join(root, "code") + path.sep]);
     const child = spawn(command.file, command.args, {
       cwd: root,
       env: isolatedEnvironment(root),
@@ -551,9 +578,12 @@ test("confined worker command: no network, no writes, no reads outside its code,
     assert.equal(report.worker, "ERR_ACCESS_DENIED");
     assert.notEqual(report.local, "ALLOWED", `loopback fetch: ${report.local}`);
     assert.notEqual(report.net, "ALLOWED", `internet fetch: ${report.net}`);
+    assert.equal(report.inside, "inside", "the allowed code tree itself is readable");
+    assert.equal(report.symlink, "EPERM", `symlink from the allowed tree into the home directory: ${report.symlink}`);
   } finally {
     server.close();
     await rm(root, { recursive: true, force: true });
+    await rm(path.join(os.homedir(), `.vs-confined-test-${process.pid}`), { force: true });
   }
 });
 
@@ -589,4 +619,45 @@ test("inside a host seatbelt sandbox the confined runtime is detected as unavail
   const out = JSON.parse(stdout);
   assert.deepEqual(out.s, { available: false, reason: "nested-sandbox" });
   assert.equal(out.minted, "CAPABILITY_MISSING/sandbox-unavailable");
+});
+
+test("round 5: the network failure cause is per request; yt-dlp is fingerprinted for frames too; a spent budget refuses a second download", async () => {
+  const { createSourceNetwork } = await import("../lib/network.mjs");
+  let calls = 0;
+  const net = createSourceNetwork({
+    lookup: async () => {
+      if (calls++ === 0) throw Object.assign(new Error("x"), { code: "ENOTFOUND" });
+      return [{ address: "127.0.0.1", family: 4 }];
+    },
+  });
+  await assert.rejects(() => net.validate("https://a.example/"), (e) => e.code === "NETWORK_UNAVAILABLE");
+  await assert.rejects(() => net.validate("https://b.example/"), (e) => e.code === "UNSAFE_URL", "a later private answer is not reported with the earlier DNS cause");
+  const refused = createSourceNetwork({
+    lookup: async () => [{ address: "142.250.1.1", family: 4 }],
+    transport: async () => { throw Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("refused"), { code: "ECONNREFUSED" }) }); },
+  });
+  await assert.rejects(() => refused.text(watchUrl, 1000), (e) => e.code === "SOURCE_ACCESS_DENIED", "a remote refusal is not an environment problem");
+  // Cache identity covers the yt-dlp executable whenever frames can use it.
+  const root = await tmp("fp-");
+  try {
+    const a = path.join(root, "yt-a"), b = path.join(root, "yt-b");
+    await writeFile(a, "#!/bin/sh\necho a\n", { mode: 0o700 });
+    await writeFile(b, "#!/bin/sh\necho b\n", { mode: 0o700 });
+    const req = normalizeRequest({ schemaVersion: 1, source: { kind: "url", value: watchUrl }, mode: "briefing", outputLanguage: "ko", policy: { asr: "off", visual: "frames" } });
+    assert.notEqual(await ingestionFingerprint(req, { ytDlpExecutable: a }), await ingestionFingerprint(req, { ytDlpExecutable: b }));
+    const policy = normalizeRequest({ schemaVersion: 1, source: { kind: "url", value: watchUrl }, mode: "briefing", outputLanguage: "ko" }).policy;
+    const { downloadYoutubeVideo } = await import("../lib/ingest-worker.mjs");
+    await assert.rejects(
+      () => downloadYoutubeVideo(videoId, { workDir: root, ytDlpExecutable: a }, policy, { workDir: root, timeoutMs: 5000 }, 0),
+      (e) => e.code === "RESOURCE_LIMIT",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("round 5: argument errors never echo raw values (a misplaced signed URL)", async () => {
+  const { stdout } = await exec(process.execPath, [path.resolve(new URL("../scripts/prepare.mjs", import.meta.url).pathname), "https://user:SECRET_PW@example.com/v.mp4?token=SECRET_TOKEN"]).catch((e) => e);
+  assert.ok(!/SECRET_PW|SECRET_TOKEN/.test(stdout), stdout);
+  assert.match(stdout, /unexpected positional argument/);
 });
