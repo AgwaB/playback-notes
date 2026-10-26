@@ -1,6 +1,6 @@
 # Explicit host-browser YouTube capture
 
-This is an **optional import path** for the cases the default HTTP path cannot serve (transcripts YouTube shows only to signed-in sessions, or a changed gate): the host observes the transcript in the user's own browser and imports it. It is not an automatic browser launcher; the skill never launches a browser for acquisition. The default extractor still makes one watch-page request and one caption request (with a proof-of-origin token when `youtubeTokens` is `botguard`). `--browser-executable` remains a PDF/preflight option; it does not enable capture.
+This is an **optional import path** for the cases the default HTTP path cannot serve (transcripts YouTube shows only to signed-in sessions, or a changed gate): the host observes the transcript in the user's own browser and imports it. It is not an automatic browser launcher; the skill never launches a browser for acquisition. The default extractor makes one watch-page request and one caption request (with a proof-of-origin token where one can be minted), plus, only when no token can be used, one Android-app player request for the caption list. `--browser-executable` remains a PDF/preflight option; it does not enable capture.
 
 ## Host acquisition boundary
 

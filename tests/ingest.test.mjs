@@ -644,7 +644,9 @@ function playerFixture(overrides = {}) {
 }
 
 test("mock YouTube watch/caption response uses public parser, manual-first selection, nullable times and no fallback ladder", async () => {
+  // Same language, auto-generated listed first: the manual track wins.
   const player = playerFixture();
+  player.captions.playerCaptionsTracklistRenderer.captionTracks[0].languageCode = "en";
   const calls = [];
   const html = `<script>var ytInitialPlayerResponse = ${JSON.stringify(player)}; window.untrusted = 'not executed';</script>`;
   assert.deepEqual(readYoutubePlayer(html), player);

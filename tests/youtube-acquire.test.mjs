@@ -120,9 +120,130 @@ test("opt-in token: one caption request carrying pot/c=WEB with browser headers;
   assert.ok(!plainCalls[1].includes("pot="));
   assert.match(
     plainCalls[1],
-    /lang=ko/,
-    "manual track wins when no language preference is given",
+    /lang=en/,
+    "with no audio-track ids, the only auto-generated track names the spoken language (en), which beats a manual track in another language",
   );
+});
+
+test("original language from real player shapes: an auto-dubbed default is not the original; without audio ids a single asr track names the spoken language", async () => {
+  const { rankCaptionTracks, originalCaptionLanguage } = await import("../lib/caption-tracks.mjs");
+  const t = (languageCode, kind) => ({ baseUrl: `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${languageCode}`, languageCode, ...(kind ? { kind } : {}) });
+  // 세바시 (dOIPnTRhF5c, 2026-10-26): Korean speech; YouTube's auto-dubs flagged default.
+  const sebasi = {
+    streamingData: { adaptiveFormats: [
+      { audioTrack: { displayName: "English (US)", id: "en-US.10", audioIsDefault: true, isAutoDubbed: true } },
+      { audioTrack: { displayName: "Indonesian", id: "id.10", audioIsDefault: false, isAutoDubbed: true } },
+    ] },
+    captions: { playerCaptionsTracklistRenderer: {
+      captionTracks: [t("en-US", "asr"), t("id", "asr"), t("ko"), t("ko", "asr")],
+      audioTracks: [{ audioTrackId: "ko.4" }, { audioTrackId: "en-US.10" }, { audioTrackId: "id.10" }],
+      defaultAudioTrackIndex: 0,
+    } },
+  };
+  assert.equal(originalCaptionLanguage(sebasi), "ko");
+  const tracks = (p) => p.captions.playerCaptionsTracklistRenderer.captionTracks.map((x) => ({ languageCode: x.languageCode.toLowerCase(), automatic: x.kind === "asr" }));
+  assert.deepEqual(rankCaptionTracks(tracks(sebasi), [], originalCaptionLanguage(sebasi))[0], { languageCode: "ko", automatic: false });
+  // Renderer default pointing at a dub gives way to the undubbed track.
+  sebasi.captions.playerCaptionsTracklistRenderer.defaultAudioTrackIndex = 1;
+  assert.equal(originalCaptionLanguage(sebasi), "ko");
+  // TED (zRvDWVfib2c): Korean speech, 27 volunteer translations listed from "ar", no audio ids.
+  const ted = { captions: { playerCaptionsTracklistRenderer: {
+    captionTracks: [t("ar"), t("az"), t("nl"), t("en"), t("ko"), t("ko", "asr"), t("vi")],
+    audioTracks: [{ captionTrackIndices: [0, 1, 2, 3, 4, 5, 6], defaultCaptionTrackIndex: 3 }],
+    defaultAudioTrackIndex: 0,
+  } } };
+  assert.equal(originalCaptionLanguage(ted), "ko", "an audio entry without an id names nothing; the asr track does");
+  assert.deepEqual(rankCaptionTracks(tracks(ted), [], "ko")[0], { languageCode: "ko", automatic: false });
+  ted.captions.playerCaptionsTracklistRenderer.captionTracks.push(t("en", "asr"));
+  assert.equal(originalCaptionLanguage(ted), null, "two asr languages: unknown");
+});
+
+test("a token-gated web track without a usable token is read from the Android app client's caption list: one list request, one track request, same language and kind", async () => {
+  const key = "AIzaSyFixtureKey_0123456789abcdef";
+  const gated = () => {
+    const p = player();
+    for (const t of p.captions.playerCaptionsTracklistRenderer.captionTracks)
+      t.baseUrl += "&exp=xpe";
+    p.captions.playerCaptionsTracklistRenderer.audioTracks = [{ audioTrackId: "ko.4" }];
+    return p;
+  };
+  const page = (p) => `${html(p)}<script>ytcfg.set({"INNERTUBE_API_KEY":"${key}"});</script>`;
+  const android = (overrides = {}) => ({
+    playabilityStatus: { status: "OK" },
+    videoDetails: { videoId },
+    captions: {
+      playerCaptionsTracklistRenderer: {
+        captionTracks: [
+          { baseUrl: `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr&android=1`, languageCode: "en", kind: "asr" },
+          { baseUrl: `https://www.youtube.com/api/timedtext?v=${videoId}&lang=ko&android=1`, languageCode: "ko" },
+        ],
+      },
+    },
+    ...overrides,
+  });
+  const run = async ({ androidPlayer = android(), token = null, status = 200 } = {}) => {
+    const calls = [];
+    const network = {
+      text: async (url) => {
+        calls.push(["text", url]);
+        if (url.startsWith("https://www.youtube.com/watch")) return page(gated());
+        if (url.includes("android=1"))
+          return json3([{ tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: "안녕" }] }]);
+        return "";
+      },
+      buffered: async (url, init) => {
+        calls.push(["buffered", url, init]);
+        if (url.includes("/youtubei/v1/player"))
+          return { status, headers: {}, body: Buffer.from(JSON.stringify(androidPlayer)) };
+        return { status: 403, headers: {}, body: Buffer.alloc(0) };
+      },
+    };
+    try {
+      return { calls, result: await fetchYoutubeCaptions(videoId, network, [], token) };
+    } catch (error) {
+      return { calls, error };
+    }
+  };
+  // No token here: the gated web URL is never requested; the Android list is.
+  const plain = await run();
+  assert.equal(plain.result.client, "android");
+  assert.equal(plain.result.tokenUsed, false);
+  assert.equal(plain.result.language, "ko", "same choice as the web ranking: manual ko");
+  assert.equal(plain.result.automatic, false);
+  assert.ok(!plain.calls.some(([, url]) => url.includes("exp=xpe")));
+  const posts = plain.calls.filter(([kind]) => kind === "buffered");
+  assert.equal(posts.length, 1);
+  const [, postUrl, init] = posts[0];
+  assert.equal(postUrl, `https://www.youtube.com/youtubei/v1/player?key=${key}`);
+  assert.equal(init.method, "POST");
+  assert.deepEqual(JSON.parse(init.body), {
+    context: { client: { clientName: "ANDROID", clientVersion: "20.10.38" } },
+    videoId,
+  });
+  assert.equal(new URL(plain.calls.at(-1)[1]).searchParams.get("fmt"), "json3");
+  // A token that YouTube refuses also falls through to the Android list.
+  const refusedToken = await run({ token: { mint: async () => ({ poToken: "tok_abc" }) } });
+  assert.equal(refusedToken.result.client, "android");
+  assert.equal(refusedToken.result.tokenUsed, false);
+  // So does a failed mint; a runtime that is missing although insisted on does not.
+  const failedMint = await run({ token: { mint: async () => { throw Object.assign(new Error("x"), { code: "SOURCE_ACCESS_DENIED", detail: "botguard-failed" }); } } });
+  assert.equal(failedMint.result.client, "android");
+  const missing = await run({ token: { mint: async () => { throw Object.assign(new Error("x"), { code: "CAPABILITY_MISSING", detail: "sandbox-unavailable" }); } } });
+  assert.equal(missing.error.code, "CAPABILITY_MISSING");
+  // Nothing usable from the Android list: a refusal, after exactly one list request.
+  for (const [androidPlayer, code] of [
+    [android({ playabilityStatus: { status: "LOGIN_REQUIRED" } }), "SOURCE_ACCESS_DENIED"],
+    [android({ videoDetails: { videoId: "aaaaaaaaaaa" } }), "SOURCE_ACCESS_DENIED"],
+    [android({ captions: { playerCaptionsTracklistRenderer: { captionTracks: [{ baseUrl: `https://www.youtube.com/api/timedtext?v=${videoId}&lang=ko&exp=xpe`, languageCode: "ko" }] } } }), "SOURCE_ACCESS_DENIED"],
+    // Android track URLs pass the same caption-URL policy as web ones.
+    [android({ captions: { playerCaptionsTracklistRenderer: { captionTracks: [{ baseUrl: `https://evil.example/api/timedtext?v=${videoId}&lang=ko`, languageCode: "ko" }] } } }), "UNSAFE_URL"],
+  ]) {
+    const r = await run({ androidPlayer });
+    assert.equal(r.error?.code, code);
+    assert.equal(r.calls.filter(([kind]) => kind === "buffered").length, 1, "no retry ladder");
+  }
+  const http = await run({ status: 400 });
+  assert.equal(http.error.detail, "transcript-refused");
 });
 
 test("token refusal and failed minting surface as access denials with fixed causes", async () => {
@@ -386,10 +507,11 @@ test("policy youtubeTokens is validated, participates in cache identity, and You
   try {
     await assert.rejects(
       () =>
-        // Token off so the caption request is refused and the ASR branch is reached.
+        // A video with no caption tracks (Big Buck Bunny) reaches the ASR branch.
         extractSource(
           normalizeRequest({
             ...base,
+            source: { kind: "url", value: "https://www.youtube.com/watch?v=aqz-KE-bpKQ" },
             policy: { asr: "local", youtubeTokens: "off" },
           }),
           {
@@ -403,6 +525,7 @@ test("policy youtubeTokens is validated, participates in cache identity, and You
           "CAPABILITY_MISSING",
           "SOURCE_ACCESS_DENIED",
           "SOURCE_UNAVAILABLE",
+          "NETWORK_UNAVAILABLE",
           "TIMEOUT",
         ].includes(e.code),
     );
