@@ -25,7 +25,7 @@
 - 동일 `report.json`에서 생성하는 Markdown/PDF; 내보내기 단계의 모델 호출 없음
 - 원본/비공개 작업 폴더와 공개 출력 폴더 분리, loopback-only 서버, Range/HEAD
 - 명시적 설치 실행 파일을 쓰는 선택적 로컬 ASR(whisper.cpp; 자막 없는 YouTube는 승인 시 yt-dlp 오디오 → 로컬 ASR). **원격 ASR·원격 비전 없음**
-- 선택적 로컬 OCR: 장면 전환/고정 간격 프레임 샘플링, tesseract 또는 macOS Apple Vision 헬퍼, 자막 영역 필터, 유사도 중복 제거; 프레임 인용·그림 블록·구조 다이어그램
+- 핵심 장면 프레임(`visual: frames`, 20초 간격+장면 전환, 컨택트 시트로 검토 후 그림으로 인용; YouTube는 승인 시 ≤480p 영상 스트림) 및 선택적 로컬 OCR(tesseract 또는 macOS Apple Vision 헬퍼, 자막 영역 필터, 정확 일치 중복 제거); 프레임 인용·그림 블록·구조 다이어그램
 - 긴 소스용 2단계 작성(청크별 검증 노트 → 다이제스트 → 리포트), 카나리아 상태 점검
 - 캐시/출력 revision 검증, 실패한 내보내기 링크 비활성화, 미완료 상태의 명시적 전달
 
