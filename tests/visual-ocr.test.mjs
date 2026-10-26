@@ -840,30 +840,101 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
     ocrSampleSeconds: 2,
   });
   assert.equal(result.raw.visualOcr.engine, "none");
-  assert.ok(result.raw.visualOcr.selector.includes("gte(t-prev_selected_t,2)"), result.raw.visualOcr.selector);
-  assert.deepEqual(result.frames.map((f) => f.timestampMs), [0, 2000, 4000]);
-  assert.ok(result.frames.every((f) => f.ocrText === undefined), "no OCR text in frames mode");
-  assert.deepEqual(result.raw.visualOcr.contactSheet, { path: "assets/contact-sheet.jpg", columns: 3, rows: 1 });
+  assert.ok(
+    result.raw.visualOcr.selector.includes("gte(t-prev_selected_t,2)"),
+    result.raw.visualOcr.selector,
+  );
+  assert.deepEqual(
+    result.frames.map((f) => f.timestampMs),
+    [0, 2000, 4000],
+  );
+  assert.ok(
+    result.frames.every((f) => f.ocrText === undefined),
+    "no OCR text in frames mode",
+  );
+  assert.deepEqual(result.raw.visualOcr.contactSheet, {
+    path: "assets/contact-sheet.jpg",
+    columns: 3,
+    rows: 1,
+  });
   const { readFile: rf } = await import("node:fs/promises");
-  const sheet = await rf(path.join(result.assetRoot, "assets", "contact-sheet.jpg"));
+  const sheet = await rf(
+    path.join(result.assetRoot, "assets", "contact-sheet.jpg"),
+  );
   const { jpegSize } = await import("../lib/ingest-worker.mjs");
-  assert.deepEqual(jpegSize(sheet), { width: 966, height: 182 }, "3 tiles of 322×182 (320 px + 1 px border)");
-  assert.ok(result.extraction.warnings.some((w) => w.code === "FRAMES_SAMPLED"));
+  assert.deepEqual(
+    jpegSize(sheet),
+    { width: 966, height: 182 },
+    "3 tiles of 322×182 (320 px + 1 px border)",
+  );
+  assert.ok(
+    result.extraction.warnings.some((w) => w.code === "FRAMES_SAMPLED"),
+  );
   // Default frames-mode selector: 20 s interval + hard cuts.
-  const defaults = await extractSource(request({ visual: "frames" }), { workDir: path.join(jobs, "frames-default") });
-  assert.ok(defaults.raw.visualOcr.selector.includes("gte(t-prev_selected_t,20)+gt(scene,0.3)"));
-  assert.deepEqual(defaults.frames.map((f) => f.timestampMs), [0, 4000], "the hard cut (ffmpeg scene score 0.4) is caught below the interval; the flat red→green transition scores ~0 and is not a cut");
+  const defaults = await extractSource(request({ visual: "frames" }), {
+    workDir: path.join(jobs, "frames-default"),
+  });
+  assert.ok(
+    defaults.raw.visualOcr.selector.includes(
+      "gte(t-prev_selected_t,20)+gt(scene,0.3)",
+    ),
+  );
+  assert.deepEqual(
+    defaults.frames.map((f) => f.timestampMs),
+    [0, 4000],
+    "the hard cut (ffmpeg scene score 0.4) is caught below the interval; the flat red→green transition scores ~0 and is not a cut",
+  );
   // YouTube: without yt-dlp it is a capability error; with a fake yt-dlp streaming the local clip it samples frames.
-  const yt = normalizeRequest({ schemaVersion: 1, source: { kind: "url", value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }, mode: "briefing", outputLanguage: "ko", formats: ["html"], transcriptFile: srt, policy: { asr: "off", visual: "frames" } });
-  await assert.rejects(() => extractSource(yt, { workDir: path.join(jobs, "frames-yt-missing") }), (e) => e.code === "CAPABILITY_MISSING");
+  const yt = normalizeRequest({
+    schemaVersion: 1,
+    source: {
+      kind: "url",
+      value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    },
+    mode: "briefing",
+    outputLanguage: "ko",
+    formats: ["html"],
+    transcriptFile: srt,
+    policy: { asr: "off", visual: "frames" },
+  });
+  await assert.rejects(
+    () => extractSource(yt, { workDir: path.join(jobs, "frames-yt-missing") }),
+    (e) => e.code === "CAPABILITY_MISSING",
+  );
   const fake = path.join(root, "yt-dlp-video");
   const log = path.join(root, "yt-dlp-video-args.json");
-  await writeFile(fake, `#!${process.execPath}\nimport { writeFileSync, readFileSync } from "node:fs";\nconst a = process.argv.slice(2);\nwriteFileSync(${JSON.stringify(log)}, JSON.stringify(a));\nprocess.stdout.write(readFileSync(${JSON.stringify(media)}));\n`, { mode: 0o700 });
-  const ytResult = await extractSource(yt, { workDir: path.join(jobs, "frames-yt"), ytDlpExecutable: fake, ocrSampleSeconds: 2 });
+  await writeFile(
+    fake,
+    `#!${process.execPath}\nimport { writeFileSync, readFileSync } from "node:fs";\nconst a = process.argv.slice(2);\nwriteFileSync(${JSON.stringify(log)}, JSON.stringify(a));\nprocess.stdout.write(readFileSync(${JSON.stringify(media)}));\n`,
+    { mode: 0o700 },
+  );
+  const ytResult = await extractSource(yt, {
+    workDir: path.join(jobs, "frames-yt"),
+    ytDlpExecutable: fake,
+    ocrSampleSeconds: 2,
+  });
   const args = JSON.parse(await rf(log, "utf8"));
-  assert.equal(args[args.indexOf("-f") + 1].split("/")[0], "bestvideo[height<=480][protocol=https][vcodec^=avc1]");
-  assert.ok(args.includes("--ignore-config") && args.includes("-o") && args[args.indexOf("-o") + 1] === "-");
-  assert.deepEqual(ytResult.frames.map((f) => f.timestampMs), [0, 2000, 4000]);
-  assert.ok(ytResult.extraction.warnings.some((w) => w.code === "PLATFORM_MEDIA_DOWNLOADED"));
-  assert.equal(ytResult.extraction.method, "user-transcript", "the transcript path is untouched by frame sampling");
+  assert.equal(
+    args[args.indexOf("-f") + 1].split("/")[0],
+    "bestvideo[height<=480][protocol=https][vcodec^=avc1]",
+  );
+  assert.ok(
+    args.includes("--ignore-config") &&
+      args.includes("-o") &&
+      args[args.indexOf("-o") + 1] === "-",
+  );
+  assert.deepEqual(
+    ytResult.frames.map((f) => f.timestampMs),
+    [0, 2000, 4000],
+  );
+  assert.ok(
+    ytResult.extraction.warnings.some(
+      (w) => w.code === "PLATFORM_MEDIA_DOWNLOADED",
+    ),
+  );
+  assert.equal(
+    ytResult.extraction.method,
+    "user-transcript",
+    "the transcript path is untouched by frame sampling",
+  );
 });

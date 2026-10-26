@@ -206,6 +206,39 @@ test("platform order is preserved: [ko, en] manual tracks with no preference sel
   );
 });
 
+test("the original language (default audio track) beats a translation listed first; a preference still wins; dubbed-track videos resolve the default index", async () => {
+  // Real-world shape (Google Cloud Tech "Transformers, explained"): es-419 manual listed
+  // first, en asr, en CC, en-US, …; default audio track index 12 → en-US.
+  const multi = () => {
+    const p = player();
+    const t = (languageCode, kind, name) => ({ baseUrl: `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${languageCode}`, languageCode, ...(kind ? { kind } : {}), name: { simpleText: name } });
+    p.captions.playerCaptionsTracklistRenderer = {
+      captionTracks: [t("es-419", "", "Spanish"), t("en", "asr", "English (auto)"), t("en", "", "English - CC"), t("en-US", "", "English (US)"), t("ja", "", "Japanese")],
+      audioTracks: Array.from({ length: 13 }, (_, i) => ({ audioTrackId: i === 12 ? "en-US.4" : "xx.10", captionTrackIndices: [0, 2, 3, 4, 1] })),
+      defaultAudioTrackIndex: 12,
+    };
+    return p;
+  };
+  const requested = [];
+  const network = {
+    text: async (url) => {
+      if (url.includes("/watch")) return html(multi());
+      requested.push(url);
+      return "<transcript><text start=\"0\" dur=\"1\">x</text></transcript>";
+    },
+  };
+  const a = await fetchYoutubeCaptions(videoId, network, []);
+  assert.equal(a.language, "en", "manual English CC, not the Spanish translation listed first nor the English asr");
+  assert.equal(a.automatic, false);
+  const b = await fetchYoutubeCaptions(videoId, network, ["ja"]);
+  assert.equal(b.language, "ja", "an explicit preference still wins over the original language");
+  const { rankCaptionTracks, originalCaptionLanguage } = await import("../lib/caption-tracks.mjs");
+  assert.equal(originalCaptionLanguage(multi().captions.playerCaptionsTracklistRenderer), "en-us");
+  assert.equal(originalCaptionLanguage({ captionTracks: [] }), null);
+  // Without a reported original language, platform order is kept (F9 behaviour unchanged).
+  assert.deepEqual(rankCaptionTracks([{ languageCode: "ko", automatic: false }, { languageCode: "en", automatic: false }], []).map((t) => t.languageCode), ["ko", "en"]);
+});
+
 test("captions ending after the advertised length leave the duration unknown instead of clipping or failing", () => {
   const over = reconcileCaptionDuration(20000, [
     { startMs: 18000, endMs: 22000, text: "runs past" },
