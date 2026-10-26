@@ -428,3 +428,27 @@ test("round 5: when cleanup of a failed fresh revision partly fails, the origina
     "everything else was still removed",
   );
 });
+
+test("round 6: a plain filesystem error (ENOSPC) also carries the leftover note, separately from its own message", async (t) => {
+  const { outputTransaction } = await import("../lib/output.mjs");
+  const { loadBundle } = await import("../lib/validation.mjs");
+  const { chmod } = await import("node:fs/promises");
+  const f = await fixture();
+  t.after(async () => {
+    await chmod(path.join(f.out, "stuck"), 0o755).catch(() => {});
+    await rm(f.root, { recursive: true, force: true });
+  });
+  const bundle = await loadBundle(f.args);
+  await assert.rejects(
+    outputTransaction(bundle, f.args, async (context) => {
+      await mkdir(path.join(context.out, "stuck"));
+      await writeFile(path.join(context.out, "stuck", "a.jpg"), "x");
+      await chmod(path.join(context.out, "stuck"), 0o555);
+      throw Object.assign(new Error("ENOSPC: no space left on device, write '/private/secret/path'"), { code: "ENOSPC" });
+    }),
+    (e) =>
+      e.code === "ENOSPC" &&
+      /Cleanup could not remove: stuck/.test(e.cleanupNote) &&
+      !/Cleanup/.test(e.message),
+  );
+});

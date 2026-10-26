@@ -356,6 +356,14 @@ test("ASR segments matching phrases Whisper invents over music are flagged by ID
   assert.doesNotMatch(flagged.message, /seg-000002/);
 });
 
+test("the invented-phrase pattern flags credits and outros, not ordinary speech about captions", async () => {
+  const { asrInventedForTest: re } = await import("../lib/ingest-worker.mjs");
+  for (const t of ["한글자막 by 한효정", "자막 제공: 배달의민족", "시청해주셔서 감사합니다", "구독과 좋아요 부탁드려요", "Thanks for watching!", "Subtitles by the Amara.org community", "字幕由Amara.org社区提供", "ご視聴ありがとうございました"])
+    assert.ok(re.test(t), t);
+  for (const t of ["The captions bypass the video processing layer.", "普通の字幕を表示します", "자막을 켜 주세요", "Closed captions: on", "오늘 제가 얘기할 주제는요"])
+    assert.ok(!re.test(t), t);
+});
+
 test("fingerprint hashes media/transcript content and parser format, ignoring report-only options", async () => {
   const a = await ingestionFingerprint(request());
   assert.match(a, /^[a-f0-9]{64}$/);

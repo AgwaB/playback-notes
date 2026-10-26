@@ -366,3 +366,21 @@ test("a node label or sublabel the renderer would cut with an ellipsis fails val
     await rm(f.root, { recursive: true, force: true });
   }
 });
+
+test("round 6: label width is per grapheme after NFC — wide letters and emoji count wide, narrow letters narrow, NFC/NFD alike, zero-width nothing; truncation never splits a grapheme", () => {
+  const { textWidth, fitText } = diagramModule;
+  const nfc = "é".repeat(18);
+  assert.equal(textWidth(nfc, 15), textWidth(nfc.normalize("NFD"), 15));
+  assert.equal(textWidth("ab\u200b\u200dc", 15), textWidth("abc", 15));
+  // Chrome measures 20×W at 294 px and 10 emoji at 190 px (15 px, weight 600, macOS).
+  assert.ok(textWidth("W".repeat(23), 15) > 200, "23 × W overflows a 200 px line");
+  assert.ok(textWidth("😀".repeat(23), 15) > 200, "23 emoji overflow");
+  assert.ok(textWidth("i".repeat(24), 15) < 200, "24 × i fits");
+  // Cutting keeps whole clusters: no orphaned combining mark or half a ZWJ family.
+  for (const text of ["e\u0301".repeat(60), "👩‍👩‍👧".repeat(30)]) {
+    const [line] = fitText(text, 15, 200, 1);
+    assert.ok(line.endsWith("…"));
+    assert.ok(text.normalize("NFC").startsWith(line.slice(0, -1)), "a prefix of whole clusters");
+    assert.ok(textWidth(line, 15) <= 200);
+  }
+});
