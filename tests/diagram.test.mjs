@@ -291,26 +291,68 @@ test("a node label or sublabel the renderer would cut with an ellipsis fails val
   // Shape from a Claude Code run on Karpathy's "Intro to LLMs": one kernel node fanning out
   // to six nodes in one row; three sublabels were silently cut in the PDF.
   const block = {
-    type: "diagram", kind: "flow", id: "llm-os-map", title: "LLM OS", alt: "LLM OS",
+    type: "diagram",
+    kind: "flow",
+    id: "llm-os-map",
+    title: "LLM OS",
+    alt: "LLM OS",
     nodes: [
       { id: "llm", label: "LLM (커널 / CPU)", sublabel: null, focal: true },
-      { id: "ctx", label: "컨텍스트 윈도", sublabel: "RAM·작업 메모리", focal: false },
-      { id: "fs", label: "파일 시스템", sublabel: "디스크 + 임베딩(RAG)", focal: false },
+      {
+        id: "ctx",
+        label: "컨텍스트 윈도",
+        sublabel: "RAM·작업 메모리",
+        focal: false,
+      },
+      {
+        id: "fs",
+        label: "파일 시스템",
+        sublabel: "디스크 + 임베딩(RAG)",
+        focal: false,
+      },
       { id: "web", label: "브라우저", sublabel: "인터넷", focal: false },
-      { id: "tools", label: "기존 소프트웨어 도구", sublabel: "계산기·Python·터미널", focal: false },
+      {
+        id: "tools",
+        label: "기존 소프트웨어 도구",
+        sublabel: "계산기·Python·터미널",
+        focal: false,
+      },
       { id: "other", label: "다른 LLM", sublabel: null, focal: false },
-      { id: "io", label: "비디오·오디오", sublabel: "주변 장치 I/O", focal: false },
+      {
+        id: "io",
+        label: "비디오·오디오",
+        sublabel: "주변 장치 I/O",
+        focal: false,
+      },
     ],
-    edges: ["ctx", "fs", "web", "tools", "other", "io"].map((to) => ({ from: "llm", to, label: null })),
-    caption: { text: "x", attribution: "interpretation", citations: [{ kind: "segment", id: "seg-000001" }] },
+    edges: ["ctx", "fs", "web", "tools", "other", "io"].map((to) => ({
+      from: "llm",
+      to,
+      label: null,
+    })),
+    caption: {
+      text: "x",
+      attribution: "interpretation",
+      citations: [{ kind: "segment", id: "seg-000001" }],
+    },
   };
   const cut = diagramTruncations(block);
-  assert.ok(cut.some((c) => c.id === "ctx" && c.field === "sublabel" && c.shown.endsWith("…")), JSON.stringify(cut));
+  assert.ok(
+    cut.some(
+      (c) => c.id === "ctx" && c.field === "sublabel" && c.shown.endsWith("…"),
+    ),
+    JSON.stringify(cut),
+  );
   const f = await fixture();
   try {
     const { validateData } = await import("../lib/validation.mjs");
     f.data.report.sections[0].blocks.push(block);
-    assert.throws(() => validateData(f.data), (e) => e.code === "INVALID_CONTRACT" && /llm-os-map: node ctx sublabel would be cut/.test(e.message));
+    assert.throws(
+      () => validateData(f.data),
+      (e) =>
+        e.code === "INVALID_CONTRACT" &&
+        /llm-os-map: node ctx sublabel would be cut/.test(e.message),
+    );
     // Labels the renderer also cut in that run ("기존 소프트웨어 도구", "비디오·오디오") must
     // shrink too; once everything fits, validation passes.
     for (const n of block.nodes) {

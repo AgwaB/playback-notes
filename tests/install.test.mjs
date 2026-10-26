@@ -89,25 +89,44 @@ test("round 5: a failed reinstall leaves the previous install usable; a marker t
     const s = await stat(p).catch(() => null);
     if (!s) return;
     await chmod(p, s.mode | 0o200);
-    if (s.isDirectory()) for (const n of await readdir(p)) await unlock(path.join(p, n));
+    if (s.isDirectory())
+      for (const n of await readdir(p)) await unlock(path.join(p, n));
   };
-  t.after(async () => { await unlock(root); await rm(root, { recursive: true, force: true }); });
+  t.after(async () => {
+    await unlock(root);
+    await rm(root, { recursive: true, force: true });
+  });
   const parent = path.join(root, "agents");
   const target = path.join(parent, "video-summarizer");
   await mkdir(parent);
-  assert.equal((await install({ target, withDependencies: false })).status, "ok");
+  assert.equal(
+    (await install({ target, withDependencies: false })).status,
+    "ok",
+  );
   const before = await readFile(path.join(target, "SKILL.md"), "utf8");
   // Staging cannot be created (parent made read-only): the install fails, the old one stays.
   await chmod(parent, 0o555);
   await assert.rejects(install({ target, withDependencies: false }));
   await chmod(parent, 0o755);
-  assert.equal(await readFile(path.join(target, "SKILL.md"), "utf8"), before, "previous install intact");
-  assert.deepEqual((await readdir(parent)).sort(), ["video-summarizer"], "no staging leftovers");
+  assert.equal(
+    await readFile(path.join(target, "SKILL.md"), "utf8"),
+    before,
+    "previous install intact",
+  );
+  assert.deepEqual(
+    (await readdir(parent)).sort(),
+    ["video-summarizer"],
+    "no staging leftovers",
+  );
   // A directory named like the marker is not ownership.
   const foreign = path.join(root, "foreign");
-  await mkdir(path.join(foreign, ".video-summarizer-install.json"), { recursive: true });
+  await mkdir(path.join(foreign, ".video-summarizer-install.json"), {
+    recursive: true,
+  });
   await writeFile(path.join(foreign, "keep.txt"), "mine");
-  await assert.rejects(install({ target: foreign, withDependencies: false }), { code: "OUTPUT_EXISTS" });
+  await assert.rejects(install({ target: foreign, withDependencies: false }), {
+    code: "OUTPUT_EXISTS",
+  });
   assert.equal(await readFile(path.join(foreign, "keep.txt"), "utf8"), "mine");
 });
 
@@ -122,7 +141,10 @@ test("round 5: renderer identity refuses a symlink in the runtime tree (its refe
   const copy = await import(`${path.join(root, "lib", "output.mjs")}?clean`);
   assert.match((await copy.rendererIdentity()).sha256, /^[a-f0-9]{64}$/);
   await writeFile(path.join(root, "shared.html"), "<p>outside</p>");
-  await link(path.join(root, "shared.html"), path.join(root, "templates", "extra.html"));
+  await link(
+    path.join(root, "shared.html"),
+    path.join(root, "templates", "extra.html"),
+  );
   const linked = await import(`${path.join(root, "lib", "output.mjs")}?linked`);
   await assert.rejects(linked.rendererIdentity(), { code: "UNSAFE_PATH" });
 });

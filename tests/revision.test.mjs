@@ -417,8 +417,14 @@ test("round 5: when cleanup of a failed fresh revision partly fails, the origina
       await chmod(path.join(context.out, "stuck"), 0o555);
       throw new AppError("EXPORT_FAILED", "Injected failure.");
     }),
-    (e) => e.code === "EXPORT_FAILED" && /Cleanup could not remove: stuck/.test(e.message),
+    (e) =>
+      e.code === "EXPORT_FAILED" &&
+      /Cleanup could not remove: stuck/.test(e.message),
   );
   const { readdir } = await import("node:fs/promises");
-  assert.deepEqual((await readdir(f.out)).filter((n) => n !== ".write.lock"), ["stuck"], "everything else was still removed");
+  assert.deepEqual(
+    (await readdir(f.out)).filter((n) => n !== ".write.lock"),
+    ["stuck"],
+    "everything else was still removed",
+  );
 });

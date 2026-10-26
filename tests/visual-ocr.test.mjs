@@ -856,10 +856,20 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
     sheets: ["assets/contact-sheet-01.jpg"],
     index: "assets/contact-sheet.txt",
     tilesPerSheet: 24,
+    lookAlikeRuns: [],
   });
-  const index = await (await import("node:fs/promises")).readFile(path.join(result.assetRoot, "assets", "contact-sheet.txt"), "utf8");
-  assert.match(index, /^1\s+r1c1\s+frame-0001\s+00:00\s+assets\/frame-0001\.jpg$/m);
-  assert.match(index, /^1\s+r1c3\s+frame-0003\s+00:04\s+assets\/frame-0003\.jpg$/m);
+  const index = await (await import("node:fs/promises")).readFile(
+    path.join(result.assetRoot, "assets", "contact-sheet.txt"),
+    "utf8",
+  );
+  assert.match(
+    index,
+    /^1\s+r1c1\s+frame-0001\s+00:00\s+assets\/frame-0001\.jpg$/m,
+  );
+  assert.match(
+    index,
+    /^1\s+r1c3\s+frame-0003\s+00:04\s+assets\/frame-0003\.jpg$/m,
+  );
   const { readFile: rf } = await import("node:fs/promises");
   const sheet = await rf(
     path.join(result.assetRoot, "assets", "contact-sheet-01.jpg"),
@@ -943,83 +953,295 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
   );
 });
 
-
 test("long videos: the default interval widens to fit the cap and reach the end; a cut storm falls back to interval-only; explicit settings that stop early are reported; sheets paginate at 24", async () => {
   const make = async (name, filter, seconds) => {
     const file = path.join(root, name);
-    await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `color=c=gray:s=64x36:r=1:d=${seconds}`, "-vf", filter, "-c:v", "libx264", "-g", "1", "-pix_fmt", "yuv420p", "-y", file], { env: isolatedEnvironment(root), timeout: 120000, shell: false });
+    await exec(
+      "ffmpeg",
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=gray:s=64x36:r=1:d=${seconds}`,
+        "-vf",
+        filter,
+        "-c:v",
+        "libx264",
+        "-g",
+        "1",
+        "-pix_fmt",
+        "yuv420p",
+        "-y",
+        file,
+      ],
+      { env: isolatedEnvironment(root), timeout: 120000, shell: false },
+    );
     return file;
   };
-  const req = (value) => normalizeRequest({ schemaVersion: 1, source: { kind: "local", value }, mode: "briefing", outputLanguage: "ko", formats: ["html"], transcriptFile: srt, policy: { asr: "off", visual: "frames" } });
+  const req = (value) =>
+    normalizeRequest({
+      schemaVersion: 1,
+      source: { kind: "local", value },
+      mode: "briefing",
+      outputLanguage: "ko",
+      formats: ["html"],
+      transcriptFile: srt,
+      policy: { asr: "off", visual: "frames" },
+    });
   const { readFile: rf } = await import("node:fs/promises");
   // (a) One hour, no cuts: interval = ceil(3600 / 119) = 31 s, ~117 frames, last near the end.
   const hour = await make("hour.mp4", "null", 3600);
-  const a = await extractSource(req(hour), { workDir: path.join(jobs, "long-a") });
+  const a = await extractSource(req(hour), {
+    workDir: path.join(jobs, "long-a"),
+  });
   assert.equal(a.raw.visualOcr.intervalSeconds, 31);
-  assert.ok(a.frames.length <= 120 && a.frames.length >= 110, String(a.frames.length));
+  assert.ok(
+    a.frames.length <= 120 && a.frames.length >= 110,
+    String(a.frames.length),
+  );
   assert.ok(a.frames.at(-1).timestampMs >= 3600000 - 31000, "reaches the end");
   assert.equal(a.raw.visualOcr.coverage.complete, true);
-  assert.ok(!a.extraction.warnings.some((w) => /FRAMES_(TRUNCATED|CUTS_DROPPED)/.test(w.code)));
-  assert.equal(a.raw.visualOcr.contactSheet.sheets.length, Math.ceil(a.frames.length / 24));
-  const idx = await rf(path.join(a.assetRoot, "assets", "contact-sheet.txt"), "utf8");
+  assert.ok(
+    !a.extraction.warnings.some((w) =>
+      /FRAMES_(TRUNCATED|CUTS_DROPPED)/.test(w.code),
+    ),
+  );
+  assert.equal(
+    a.raw.visualOcr.contactSheet.sheets.length,
+    Math.ceil(a.frames.length / 24),
+  );
+  const idx = await rf(
+    path.join(a.assetRoot, "assets", "contact-sheet.txt"),
+    "utf8",
+  );
   assert.match(idx, /^2\s+r1c1\s+frame-0025\s/m, "frame 25 opens sheet 2");
   // (b) Ten minutes with a hard cut every 2 s (steady frames between, so ffmpeg scores each
   //     change as a cut): cuts would exhaust the cap at ~4 min; the interval-only pass (20 s)
   //     covers the whole video and the drop is reported.
-  const storm = await make("storm.mp4", "geq=lum='if(mod(floor(N/2),2),16,235)':cb=128:cr=128", 600);
-  const b = await extractSource(req(storm), { workDir: path.join(jobs, "long-b") });
+  const storm = await make(
+    "storm.mp4",
+    "geq=lum='if(mod(floor(N/2),2),16,235)':cb=128:cr=128",
+    600,
+  );
+  const b = await extractSource(req(storm), {
+    workDir: path.join(jobs, "long-b"),
+  });
   assert.equal(b.raw.visualOcr.coverage.cutsDropped, true);
   assert.equal(b.raw.visualOcr.coverage.complete, true);
-  assert.ok(b.frames.at(-1).timestampMs >= 580000, String(b.frames.at(-1).timestampMs));
-  assert.ok(b.extraction.warnings.some((w) => w.code === "FRAMES_CUTS_DROPPED"));
+  assert.ok(
+    b.frames.at(-1).timestampMs >= 580000,
+    String(b.frames.at(-1).timestampMs),
+  );
+  assert.ok(
+    b.extraction.warnings.some((w) => w.code === "FRAMES_CUTS_DROPPED"),
+  );
   // (c) Explicit settings that cannot reach the end are reported, not silent.
-  const c = await extractSource(req(storm), { workDir: path.join(jobs, "long-c"), ocrSampleSeconds: 1, ocrMaxFrames: 5 });
+  const c = await extractSource(req(storm), {
+    workDir: path.join(jobs, "long-c"),
+    ocrSampleSeconds: 1,
+    ocrMaxFrames: 5,
+  });
   assert.equal(c.raw.visualOcr.coverage.complete, false);
-  assert.ok(c.extraction.warnings.some((w) => w.code === "FRAMES_TRUNCATED" && /00:04 of 10:00/.test(w.message)), JSON.stringify(c.extraction.warnings.map((w) => w.message)));
+  assert.ok(
+    c.extraction.warnings.some(
+      (w) => w.code === "FRAMES_TRUNCATED" && /00:04 of 10:00/.test(w.message),
+    ),
+    JSON.stringify(c.extraction.warnings.map((w) => w.message)),
+  );
 });
 
 test("round 5: coverage is honest (unknown duration + cap, short explicit pass), frames alone are usable evidence, and the video gate checks the actual streams", async () => {
-  const req = (value, policy = {}) => normalizeRequest({ schemaVersion: 1, source: { kind: "local", value }, mode: "briefing", outputLanguage: "ko", formats: ["html"], transcriptFile: srt, policy: { asr: "off", visual: "frames", ...policy } });
+  const req = (value, policy = {}) =>
+    normalizeRequest({
+      schemaVersion: 1,
+      source: { kind: "local", value },
+      mode: "briefing",
+      outputLanguage: "ko",
+      formats: ["html"],
+      transcriptFile: srt,
+      policy: { asr: "off", visual: "frames", ...policy },
+    });
   // (F2-A) A streamed Matroska has no duration: a capped pass must not claim full coverage.
   const streamed = path.join(root, "streamed.mkv");
   const { spawn } = await import("node:child_process");
   const { createWriteStream } = await import("node:fs");
   await new Promise((resolve, reject) => {
-    const p = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=64x36:r=1:d=200", "-c:v", "libx264", "-g", "1", "-pix_fmt", "yuv420p", "-f", "matroska", "-"], { stdio: ["ignore", "pipe", "inherit"] });
+    const p = spawn(
+      "ffmpeg",
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=gray:s=64x36:r=1:d=200",
+        "-c:v",
+        "libx264",
+        "-g",
+        "1",
+        "-pix_fmt",
+        "yuv420p",
+        "-f",
+        "matroska",
+        "-",
+      ],
+      { stdio: ["ignore", "pipe", "inherit"] },
+    );
     p.stdout.pipe(createWriteStream(streamed));
-    p.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))));
+    p.on("close", (code) =>
+      code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`)),
+    );
   });
-  const a = await extractSource(req(streamed), { workDir: path.join(jobs, "r5-unknown"), ocrMaxFrames: 3 });
+  const a = await extractSource(req(streamed), {
+    workDir: path.join(jobs, "r5-unknown"),
+    ocrMaxFrames: 3,
+  });
   assert.equal(a.raw.visualOcr.coverage.durationMs, null);
   assert.equal(a.raw.visualOcr.coverage.complete, false);
-  assert.ok(a.extraction.warnings.some((w) => w.code === "FRAMES_TRUNCATED" && /duration is unknown/.test(w.message)));
+  assert.ok(
+    a.extraction.warnings.some(
+      (w) =>
+        w.code === "FRAMES_TRUNCATED" && /duration is unknown/.test(w.message),
+    ),
+  );
   // (F2-B) A 9 s video, explicit 1 s interval, cap 3 → 0/1/2 s is not "complete".
   const nine = path.join(root, "nine.mp4");
-  await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=64x36:r=1:d=9", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", nine], { env: isolatedEnvironment(root), timeout: 30000, shell: false });
-  const b = await extractSource(req(nine), { workDir: path.join(jobs, "r5-short"), ocrSampleSeconds: 1, ocrMaxFrames: 3 });
-  assert.deepEqual(b.frames.map((f) => f.timestampMs), [0, 1000, 2000]);
+  await exec(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=gray:s=64x36:r=1:d=9",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      nine,
+    ],
+    { env: isolatedEnvironment(root), timeout: 30000, shell: false },
+  );
+  const b = await extractSource(req(nine), {
+    workDir: path.join(jobs, "r5-short"),
+    ocrSampleSeconds: 1,
+    ocrMaxFrames: 3,
+  });
+  assert.deepEqual(
+    b.frames.map((f) => f.timestampMs),
+    [0, 1000, 2000],
+  );
   assert.ok(b.extraction.warnings.some((w) => w.code === "FRAMES_TRUNCATED"));
   // (F3) No transcript, ASR off: sampled frames alone make visual-only evidence.
   const { prepare } = await import("../scripts/prepare.mjs");
   const { realpath } = await import("node:fs/promises");
   const work = path.join(await realpath(jobs), "r5-visual-only");
   const reqFile = path.join(root, "visual-only.json");
-  await writeFile(reqFile, JSON.stringify({ schemaVersion: 1, source: { kind: "local", value: media }, mode: "briefing", outputLanguage: "ko", formats: ["html"], policy: { asr: "off", visual: "frames" } }));
-  const prepared = await prepare({ request: reqFile, "work-dir": work, "ocr-sample-seconds": "2" });
+  await writeFile(
+    reqFile,
+    JSON.stringify({
+      schemaVersion: 1,
+      source: { kind: "local", value: media },
+      mode: "briefing",
+      outputLanguage: "ko",
+      formats: ["html"],
+      policy: { asr: "off", visual: "frames" },
+    }),
+  );
+  const prepared = await prepare({
+    request: reqFile,
+    "work-dir": work,
+    "ocr-sample-seconds": "2",
+  });
   assert.equal(prepared.status, "ok", JSON.stringify(prepared.issues));
-  const ev = JSON.parse(await (await import("node:fs/promises")).readFile(path.join(work, "evidence.json"), "utf8"));
+  const ev = JSON.parse(
+    await (await import("node:fs/promises")).readFile(
+      path.join(work, "evidence.json"),
+      "utf8",
+    ),
+  );
   assert.equal(ev.segments.length, 0);
   assert.ok(ev.frames.length >= 1);
 });
 
 test("round 5: a YouTube 'video' download that also carries audio, or is above 480p, is refused", async () => {
   const muxed = path.join(root, "muxed.mp4");
-  await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=1280x720:d=2", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", "-shortest", "-y", muxed], { env: isolatedEnvironment(root), timeout: 30000, shell: false });
-  const fake = path.join(root, "yt-dlp-muxed");
-  await writeFile(fake, `#!${process.execPath}\nimport { readFileSync } from "node:fs";\nprocess.stdout.write(readFileSync(${JSON.stringify(muxed)}));\n`, { mode: 0o700 });
-  const yt = normalizeRequest({ schemaVersion: 1, source: { kind: "url", value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" }, mode: "briefing", outputLanguage: "ko", formats: ["html"], transcriptFile: srt, policy: { asr: "off", visual: "frames" } });
-  await assert.rejects(
-    () => extractSource(yt, { workDir: path.join(jobs, "r5-muxed"), ytDlpExecutable: fake }),
-    (e) => e.code === "SOURCE_UNSUPPORTED" && /download-failed|yt-dlp|video/i.test(e.message),
+  await exec(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=1280x720:d=2",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=2",
+      "-c:v",
+      "libx264",
+      "-c:a",
+      "aac",
+      "-pix_fmt",
+      "yuv420p",
+      "-shortest",
+      "-y",
+      muxed,
+    ],
+    { env: isolatedEnvironment(root), timeout: 30000, shell: false },
   );
+  const fake = path.join(root, "yt-dlp-muxed");
+  await writeFile(
+    fake,
+    `#!${process.execPath}\nimport { readFileSync } from "node:fs";\nprocess.stdout.write(readFileSync(${JSON.stringify(muxed)}));\n`,
+    { mode: 0o700 },
+  );
+  const yt = normalizeRequest({
+    schemaVersion: 1,
+    source: {
+      kind: "url",
+      value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    },
+    mode: "briefing",
+    outputLanguage: "ko",
+    formats: ["html"],
+    transcriptFile: srt,
+    policy: { asr: "off", visual: "frames" },
+  });
+  await assert.rejects(
+    () =>
+      extractSource(yt, {
+        workDir: path.join(jobs, "r5-muxed"),
+        ytDlpExecutable: fake,
+      }),
+    (e) =>
+      e.code === "SOURCE_UNSUPPORTED" &&
+      /download-failed|yt-dlp|video/i.test(e.message),
+  );
+});
+
+
+test("look-alike runs: the same picture and a build-up are marked in the index; every frame is kept", async () => {
+  const clip = path.join(root, "buildup.mp4");
+  await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=320x180:r=1:d=5", "-vf", "drawbox=x=10:y=10:w=40:h=20:color=white:t=fill:enable='gte(t,3)',drawbox=x=0:y=0:w=320:h=180:color=black:t=fill:enable='gte(t,4)'", "-c:v", "libx264", "-g", "1", "-pix_fmt", "yuv420p", "-y", clip], { env: isolatedEnvironment(root), timeout: 30000, shell: false });
+  const r = await extractSource(
+    normalizeRequest({ schemaVersion: 1, source: { kind: "local", value: clip }, mode: "briefing", outputLanguage: "ko", formats: ["html"], transcriptFile: srt, policy: { asr: "off", visual: "frames" } }),
+    { workDir: path.join(jobs, "lookalike"), ocrSampleSeconds: 1 },
+  );
+  assert.equal(r.frames.length, 5, "nothing dropped");
+  assert.deepEqual(r.raw.visualOcr.contactSheet.lookAlikeRuns, [{ from: "frame-0001", to: "frame-0004", kind: "builds" }]);
+  const index = await (await import("node:fs/promises")).readFile(path.join(r.assetRoot, "assets", "contact-sheet.txt"), "utf8");
+  assert.match(index, /frame-0002 .* same picture$/m);
+  assert.match(index, /frame-0004 .* same layout, content changes$/m);
+  assert.doesNotMatch(index, /frame-0005 .* (same picture|same layout)/);
+  assert.match(index, /frame-0001–frame-0004 \(00:00–00:03\): the same layout with content changing/);
 });
