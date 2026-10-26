@@ -15,6 +15,7 @@
 | `TRANSCRIPT_UNAVAILABLE` (`Cause: no-transcript`) | The video exposes no transcript (captions disabled or none uploaded). Ask for SRT/VTT/TXT; for local media, approved local ASR or local OCR may apply. |
 | `AUTOMATIC_CAPTIONS` warning | The track is auto-generated: no punctuation and mangled technical terms are likely; prefer a manual track via `policy.transcriptLanguages` when one exists, and read quotations with care. |
 | `ASR_MODEL_COMPACT` warning | The whisper model file is under 1 GiB (tiny/base/small). For Korean or any speech carrying numbers, thresholds or prohibitions, rerun with `ggml-large-v3-turbo.bin` (1.5 GiB, ~0.3–0.9× real time on Apple Silicon); see the support matrix. |
+| `ASR_SUSPECT_SEGMENTS` warning | The listed segments match phrases Whisper invents over music or silence (subtitle credits such as “한글자막 by …”, “thanks for watching”, subscribe requests). Check the source at those times; do not cite them as speech unless confirmed. Nothing was removed. |
 | `VISUAL_OCR_UNVERIFIED` warning | Frame text is machine-read from sampled scenes; open each frame before citing, and expect unsampled scenes. |
 | `SOURCE_UNSUPPORTED` | Explain the unsupported source/platform or ASR path. A user transcript may be sufficient. |
 | `UNSAFE_URL` | Do not disable network checks. Credentials, private addresses and unsafe redirects are refused. Ask for a public source or authorized local file. |

@@ -330,7 +330,30 @@ test("explicit mock whisper.cpp exercises only the local adapter and real ffmpeg
   assert.ok(
     !big.extraction.warnings.some((w) => w.code === "ASR_MODEL_COMPACT"),
   );
+  assert.ok(
+    !big.extraction.warnings.some((w) => w.code === "ASR_SUSPECT_SEGMENTS"),
+  );
   await rm(large, { force: true });
+});
+
+test("ASR segments matching phrases Whisper invents over music are flagged by ID, not removed", async () => {
+  const executable = path.join(root, "mock-whisper-credit");
+  const model = path.join(root, "mock-model.bin");
+  await writeFile(model, "offline test placeholder, not a speech model");
+  await writeFile(
+    executable,
+    `#!${process.execPath}\nimport fs from 'node:fs';\nif (process.argv.includes('--help')) { console.log('whisper.cpp build 1.7.6'); process.exit(0); }\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,000 --> 00:00:00,300\\n한글자막 by 한효정\\n\\n2\\n00:00:00,400 --> 00:00:00,800\\n오늘 제가 얘기할 주제는요\\n');\n`,
+    { mode: 0o700 },
+  );
+  const result = await extractSource(
+    request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
+    { workDir: path.join(jobs, "credit"), localAsrExecutable: executable, localAsrModel: model },
+  );
+  assert.equal(result.segments.length, 2, "nothing is removed");
+  const flagged = result.extraction.warnings.find((w) => w.code === "ASR_SUSPECT_SEGMENTS");
+  assert.ok(flagged);
+  assert.match(flagged.message, /^seg-000001 match/);
+  assert.doesNotMatch(flagged.message, /seg-000002/);
 });
 
 test("fingerprint hashes media/transcript content and parser format, ignoring report-only options", async () => {
