@@ -572,6 +572,9 @@ test("no network is reported as NETWORK_UNAVAILABLE (not an unsafe URL or an acc
   const { classifyCanary } = await import("../scripts/canary.mjs");
   assert.equal(classifyCanary({ code: "NETWORK_UNAVAILABLE", detail: "network-unavailable" }).state, "environment");
   assert.equal(classifyCanary({ code: "CAPABILITY_MISSING", detail: "sandbox-unavailable" }).state, "environment");
+  assert.equal(classifyCanary({ code: "SOURCE_ACCESS_DENIED", detail: "transcript-refused-no-token" }).state, "environment");
+  const { FAILURE_DETAILS } = await import("../lib/ingest.mjs");
+  for (const key of ["network-unavailable", "sandbox-unavailable", "transcript-refused-no-token"]) assert.ok(FAILURE_DETAILS[key], key);
 });
 
 test("inside a host seatbelt sandbox the confined runtime is detected as unavailable (auto continues without a token; botguard refuses clearly)", { skip: process.platform !== "darwin" && "macOS only" }, async () => {

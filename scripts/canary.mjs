@@ -25,7 +25,8 @@ export function classifyCanary(error) {
   // Our environment, not YouTube and not the adapter: no network or no confined runtime.
   if (
     error.code === "NETWORK_UNAVAILABLE" ||
-    cause === "sandbox-unavailable"
+    cause === "sandbox-unavailable" ||
+    cause === "transcript-refused-no-token"
   )
     return { state: "environment", cause: cause ?? error.code };
   if (
