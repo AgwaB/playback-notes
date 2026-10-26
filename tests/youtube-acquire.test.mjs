@@ -556,3 +556,34 @@ test("confined worker command: no network, no writes, no reads outside its code,
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("no network is reported as NETWORK_UNAVAILABLE (not an unsafe URL or an access denial), and the canary calls it an environment problem", async () => {
+  const { createSourceNetwork } = await import("../lib/network.mjs");
+  const dns = createSourceNetwork({ lookup: async () => { throw Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }); } });
+  await assert.rejects(() => dns.validate(watchUrl), (e) => e.code === "NETWORK_UNAVAILABLE" && e.detail === "network-unavailable");
+  const socket = createSourceNetwork({
+    lookup: async () => [{ address: "142.250.1.1", family: 4 }],
+    transport: async () => { throw Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect EPERM"), { code: "EPERM" }) }); },
+  });
+  await assert.rejects(() => socket.text(watchUrl, 1000), (e) => e.code === "NETWORK_UNAVAILABLE");
+  // A private destination is still a safety refusal, not "offline".
+  const privateNet = createSourceNetwork({ lookup: async () => [{ address: "10.0.0.1", family: 4 }] });
+  await assert.rejects(() => privateNet.validate("https://example.com/"), (e) => e.code === "UNSAFE_URL");
+  const { classifyCanary } = await import("../scripts/canary.mjs");
+  assert.equal(classifyCanary({ code: "NETWORK_UNAVAILABLE", detail: "network-unavailable" }).state, "environment");
+  assert.equal(classifyCanary({ code: "CAPABILITY_MISSING", detail: "sandbox-unavailable" }).state, "environment");
+});
+
+test("inside a host seatbelt sandbox the confined runtime is detected as unavailable (auto continues without a token; botguard refuses clearly)", { skip: process.platform !== "darwin" && "macOS only" }, async () => {
+  const { confinedRuntimeStatus } = await import("../lib/ingest-worker.mjs");
+  assert.deepEqual(await confinedRuntimeStatus(), { available: true, reason: null }, "this test process is not itself sandboxed");
+  // Run the same probe inside an outer sandbox-exec, as a sandboxed host shell would.
+  const probe = `import("${new URL("../lib/ingest-worker.mjs", import.meta.url).href}").then(async (m) => { const s = await m.confinedRuntimeStatus(); let minted; try { await m.mintYoutubeToken("${videoId}", { workDir: process.cwd(), timeoutMs: 5000 }); } catch (e) { minted = e.code + "/" + e.detail; } process.stdout.write(JSON.stringify({ s, minted })); })`;
+  // A deny-default outer profile, like a host agent's sandboxed shell (e.g. Codex
+  // workspace-write), forbids applying a second profile (sandbox_apply: EPERM).
+  const outer = '(version 1)(deny default)(allow file-read*)(allow file-write* (subpath "/dev"))(allow process-exec)(allow process-fork)(allow sysctl-read)(allow mach-lookup)(allow signal (target self))';
+  const { stdout } = await exec("/usr/bin/sandbox-exec", ["-p", outer, process.execPath, "--input-type=module", "-e", probe], { timeout: 30000 });
+  const out = JSON.parse(stdout);
+  assert.deepEqual(out.s, { available: false, reason: "nested-sandbox" });
+  assert.equal(out.minted, "CAPABILITY_MISSING/sandbox-unavailable");
+});

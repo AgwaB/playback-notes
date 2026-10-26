@@ -16,11 +16,18 @@ import { extractYouTubeVideoId } from "@steipete/summarize-core/content/url";
  * Classify a caption-acquisition outcome the way yt-dlp/prepublish canaries do: the fixes
  * differ. `blocked` = the platform gates this session (policy/approval question);
  * `broken` = our adapter, token minting or a tool no longer works (code/update question);
- * `no-captions` = this video simply has none (pick another canary).
+ * `no-captions` = this video simply has none (pick another canary);
+ * `environment` = this process has no network or no confined runtime (run elsewhere).
  */
 export function classifyCanary(error) {
   if (!error) return { state: "ok", cause: null };
   const cause = error.detail ?? null;
+  // Our environment, not YouTube and not the adapter: no network or no confined runtime.
+  if (
+    error.code === "NETWORK_UNAVAILABLE" ||
+    cause === "sandbox-unavailable"
+  )
+    return { state: "environment", cause: cause ?? error.code };
   if (
     ["ASR_REQUIRED", "TRANSCRIPT_UNAVAILABLE"].includes(error.code) ||
     cause === "no-transcript"
@@ -104,6 +111,7 @@ export async function canary(options) {
           "no-captions":
             "This video exposes no captions; choose a canary video that has them.",
           unavailable: `The video is unavailable (cause: ${state.cause}); choose another canary video.`,
+          environment: `This process cannot run the check (cause: ${state.cause}): no network access or no confined token runtime here, e.g. inside a host agent's sandboxed shell. Run the canary outside that sandbox; this says nothing about YouTube or the adapter.`,
         }[state.state] ?? "Unknown canary outcome.",
         "error",
       ),
