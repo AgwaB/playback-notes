@@ -150,7 +150,9 @@ test("round 5: renderer identity refuses a symlink in the runtime tree (its refe
 });
 
 test("round 6: swap, permission and link failures roll back to the previous install and links; a target that appears during staging is never replaced; one installer at a time", async (t) => {
-  const { chmod, readdir, readFile, readlink, symlink } = await import("node:fs/promises");
+  const { chmod, readdir, readFile, readlink, symlink } = await import(
+    "node:fs/promises"
+  );
   const root = await mkdtemp(path.join(os.tmpdir(), "vs-install6-"));
   const unlock = async (p) => {
     const s = await stat(p).catch(() => null);
@@ -170,14 +172,42 @@ test("round 6: swap, permission and link failures roll back to the previous inst
   await mkdir(elsewhere);
   await mkdir(path.dirname(hostLink));
   await symlink(elsewhere, hostLink);
-  assert.equal((await install({ target, withDependencies: false })).status, "ok");
-  const marker = await readFile(path.join(target, ".video-summarizer-install.json"), "utf8");
+  assert.equal(
+    (await install({ target, withDependencies: false })).status,
+    "ok",
+  );
+  const marker = await readFile(
+    path.join(target, ".video-summarizer-install.json"),
+    "utf8",
+  );
   for (const faultAt of ["swap", "chmod", "link"]) {
-    await assert.rejects(install({ target, link: hostLink, withDependencies: false, faultAt }), /injected/);
-    assert.equal(await readFile(path.join(target, ".video-summarizer-install.json"), "utf8"), marker, `${faultAt}: previous install restored`);
-    assert.equal((await stat(target)).mode & 0o222, 0, `${faultAt}: still read-only`);
-    assert.equal(await readlink(hostLink), elsewhere, `${faultAt}: host link restored`);
-    assert.deepEqual((await readdir(parent)).sort(), ["video-summarizer"], `${faultAt}: no staging/previous/lock left`);
+    await assert.rejects(
+      install({ target, link: hostLink, withDependencies: false, faultAt }),
+      /injected/,
+    );
+    assert.equal(
+      await readFile(
+        path.join(target, ".video-summarizer-install.json"),
+        "utf8",
+      ),
+      marker,
+      `${faultAt}: previous install restored`,
+    );
+    assert.equal(
+      (await stat(target)).mode & 0o222,
+      0,
+      `${faultAt}: still read-only`,
+    );
+    assert.equal(
+      await readlink(hostLink),
+      elsewhere,
+      `${faultAt}: host link restored`,
+    );
+    assert.deepEqual(
+      (await readdir(parent)).sort(),
+      ["video-summarizer"],
+      `${faultAt}: no staging/previous/lock left`,
+    );
   }
   // Initially absent target created by someone else during staging: refused, untouched.
   const fresh = path.join(root, "fresh", "video-summarizer");
@@ -195,8 +225,13 @@ test("round 6: swap, permission and link failures roll back to the previous inst
   assert.equal(await readFile(path.join(fresh, "keep.txt"), "utf8"), "mine");
   // A concurrent installer is refused while the lock is held.
   await mkdir(`${target}.install-lock`);
-  await assert.rejects(install({ target, withDependencies: false }), { code: "BUSY" });
+  await assert.rejects(install({ target, withDependencies: false }), {
+    code: "BUSY",
+  });
   await rm(`${target}.install-lock`, { recursive: true });
-  assert.equal((await install({ target, link: hostLink, withDependencies: false })).status, "ok");
+  assert.equal(
+    (await install({ target, link: hostLink, withDependencies: false })).status,
+    "ok",
+  );
   assert.equal(await readlink(hostLink), target);
 });

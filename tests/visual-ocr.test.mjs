@@ -1229,22 +1229,59 @@ test("round 5: a YouTube 'video' download that also carries audio, or is above 4
   );
 });
 
-
 test("look-alike runs: near-identical and build-up runs are marked in the index; every frame is kept", async () => {
   const clip = path.join(root, "buildup.mp4");
   // 0–2 s grey, a small box appears at 3 s (build-up), a black frame at 4 s (new scene).
-  await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=320x180:r=1:d=5", "-vf", "drawbox=x=10:y=10:w=40:h=20:color=white:t=fill:enable='gte(t,3)',drawbox=x=0:y=0:w=320:h=180:color=black:t=fill:enable='gte(t,4)'", "-c:v", "libx264", "-g", "1", "-pix_fmt", "yuv420p", "-y", clip], { env: isolatedEnvironment(root), timeout: 30000, shell: false });
+  await exec(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=gray:s=320x180:r=1:d=5",
+      "-vf",
+      "drawbox=x=10:y=10:w=40:h=20:color=white:t=fill:enable='gte(t,3)',drawbox=x=0:y=0:w=320:h=180:color=black:t=fill:enable='gte(t,4)'",
+      "-c:v",
+      "libx264",
+      "-g",
+      "1",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      clip,
+    ],
+    { env: isolatedEnvironment(root), timeout: 30000, shell: false },
+  );
   const r = await extractSource(
-    normalizeRequest({ schemaVersion: 1, source: { kind: "local", value: clip }, mode: "briefing", outputLanguage: "ko", formats: ["html"], transcriptFile: srt, policy: { asr: "off", visual: "frames" } }),
+    normalizeRequest({
+      schemaVersion: 1,
+      source: { kind: "local", value: clip },
+      mode: "briefing",
+      outputLanguage: "ko",
+      formats: ["html"],
+      transcriptFile: srt,
+      policy: { asr: "off", visual: "frames" },
+    }),
     { workDir: path.join(jobs, "lookalike"), ocrSampleSeconds: 1 },
   );
   assert.equal(r.frames.length, 5, "nothing dropped");
-  assert.deepEqual(r.raw.visualOcr.contactSheet.lookAlikeRuns, [{ from: "frame-0001", to: "frame-0004", kind: "builds" }]);
-  const index = await (await import("node:fs/promises")).readFile(path.join(r.assetRoot, "assets", "contact-sheet.txt"), "utf8");
+  assert.deepEqual(r.raw.visualOcr.contactSheet.lookAlikeRuns, [
+    { from: "frame-0001", to: "frame-0004", kind: "builds" },
+  ]);
+  const index = await (await import("node:fs/promises")).readFile(
+    path.join(r.assetRoot, "assets", "contact-sheet.txt"),
+    "utf8",
+  );
   assert.match(index, /frame-0002 .* build-up run frame-0001–frame-0004$/m);
   assert.doesNotMatch(index, /frame-0005 .* run /);
   assert.match(index, /a changed word, number or\nsign can look identical/i);
-  assert.match(index, /frame-0001–frame-0004 \(00:00–00:03\): the same layout with content changing/);
+  assert.match(
+    index,
+    /frame-0001–frame-0004 \(00:00–00:03\): the same layout with content changing/,
+  );
 });
 
 test("look-alike run kinds: drift cannot chain near-identical frames, and a thumbnail failure only drops the hint", async () => {
@@ -1252,24 +1289,84 @@ test("look-alike run kinds: drift cannot chain near-identical frames, and a thum
   const frames = Array.from({ length: 6 }, (_, i) => ({ id: `f${i}` }));
   // Each neighbour 0.6 apart: near-identical step, but frame 2 is 1.2 from frame 0.
   const drift = (a, b) => Math.abs(a - b) * 0.6;
-  assert.deepEqual(lookAlikeRunsForTest(frames.slice(0, 3), drift), [{ from: 0, to: 2, kind: "builds" }]);
+  assert.deepEqual(lookAlikeRunsForTest(frames.slice(0, 3), drift), [
+    { from: 0, to: 2, kind: "builds" },
+  ]);
   const flat = (a, b) => (a === b ? 0 : 0.5);
-  assert.deepEqual(lookAlikeRunsForTest(frames.slice(0, 3), flat), [{ from: 0, to: 2, kind: "near-identical" }]);
+  assert.deepEqual(lookAlikeRunsForTest(frames.slice(0, 3), flat), [
+    { from: 0, to: 2, kind: "near-identical" },
+  ]);
   const cut = (a, b) => (Math.min(a, b) < 3 && Math.max(a, b) >= 3 ? 50 : 0.5);
-  assert.deepEqual(lookAlikeRunsForTest(frames, cut), [{ from: 0, to: 2, kind: "near-identical" }, { from: 3, to: 5, kind: "near-identical" }]);
+  assert.deepEqual(lookAlikeRunsForTest(frames, cut), [
+    { from: 0, to: 2, kind: "near-identical" },
+    { from: 3, to: 5, kind: "near-identical" },
+  ]);
   assert.deepEqual(lookAlikeRunsForTest(frames, null), []);
 });
 
 test("a capped scene-only pass is never reported as complete (no sampling step bounds the gap)", async () => {
   const clip = path.join(root, "cuts.mp4");
   // Nine seconds, a hard colour cut every two seconds.
-  await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=160x90:r=5:d=2", "-f", "lavfi", "-i", "color=c=blue:s=160x90:r=5:d=2", "-f", "lavfi", "-i", "color=c=green:s=160x90:r=5:d=2", "-f", "lavfi", "-i", "color=c=yellow:s=160x90:r=5:d=2", "-f", "lavfi", "-i", "color=c=white:s=160x90:r=5:d=1", "-filter_complex", "[0:v][1:v][2:v][3:v][4:v]concat=n=5:v=1:a=0", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", clip], { env: isolatedEnvironment(root), timeout: 30000, shell: false });
-  const r = await extractSource(
-    normalizeRequest({ schemaVersion: 1, source: { kind: "local", value: clip }, mode: "briefing", outputLanguage: "ko", formats: ["html"], transcriptFile: srt, policy: { asr: "off", visual: "frames" } }),
-    { workDir: path.join(jobs, "scene-cap"), ocrSceneThreshold: 0.3, ocrMaxFrames: 3 },
+  await exec(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=160x90:r=5:d=2",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=160x90:r=5:d=2",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=green:s=160x90:r=5:d=2",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=yellow:s=160x90:r=5:d=2",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=white:s=160x90:r=5:d=1",
+      "-filter_complex",
+      "[0:v][1:v][2:v][3:v][4:v]concat=n=5:v=1:a=0",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      clip,
+    ],
+    { env: isolatedEnvironment(root), timeout: 30000, shell: false },
   );
-  assert.deepEqual(r.frames.map((f) => f.timestampMs), [0, 2000, 4000]);
+  const r = await extractSource(
+    normalizeRequest({
+      schemaVersion: 1,
+      source: { kind: "local", value: clip },
+      mode: "briefing",
+      outputLanguage: "ko",
+      formats: ["html"],
+      transcriptFile: srt,
+      policy: { asr: "off", visual: "frames" },
+    }),
+    {
+      workDir: path.join(jobs, "scene-cap"),
+      ocrSceneThreshold: 0.3,
+      ocrMaxFrames: 3,
+    },
+  );
+  assert.deepEqual(
+    r.frames.map((f) => f.timestampMs),
+    [0, 2000, 4000],
+  );
   assert.equal(r.raw.visualOcr.coverage.complete, false);
-  const truncated = r.extraction.warnings.find((w) => w.code === "FRAMES_TRUNCATED");
+  const truncated = r.extraction.warnings.find(
+    (w) => w.code === "FRAMES_TRUNCATED",
+  );
   assert.match(truncated?.message ?? "", /later scenes may not be represented/);
 });

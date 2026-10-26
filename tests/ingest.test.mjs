@@ -342,7 +342,7 @@ test("ASR segments matching phrases Whisper invents over music are flagged by ID
   await writeFile(model, "offline test placeholder, not a speech model");
   await writeFile(
     executable,
-    `#!${process.execPath}\nimport fs from 'node:fs';\nif (process.argv.includes('--help')) { console.log('whisper.cpp build 1.7.6'); process.exit(0); }\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,000 --> 00:00:00,300\\n한글자막 by 한효정\\n\\n2\\n00:00:00,400 --> 00:00:00,800\\n오늘 제가 얘기할 주제는요\\n');\n`,
+    `#!${process.execPath}\nimport fs from 'node:fs';\nif (process.argv.includes('--version')) { console.log('whisper.cpp version: 1.9.5-dev'); process.exit(0); }\nif (process.argv.includes('--help')) process.exit(7);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,000 --> 00:00:00,300\\n한글자막 by 한효정\\n\\n2\\n00:00:00,400 --> 00:00:00,800\\n오늘 제가 얘기할 주제는요\\n');\n`,
     { mode: 0o700 },
   );
   const result = await extractSource(
@@ -350,6 +350,7 @@ test("ASR segments matching phrases Whisper invents over music are flagged by ID
     { workDir: path.join(jobs, "credit"), localAsrExecutable: executable, localAsrModel: model },
   );
   assert.equal(result.segments.length, 2, "nothing is removed");
+  assert.equal(result.extraction.providerVersion, "1.9.5", "current whisper.cpp reports its version through --version");
   const flagged = result.extraction.warnings.find((w) => w.code === "ASR_SUSPECT_SEGMENTS");
   assert.ok(flagged);
   assert.match(flagged.message, /^seg-000001 match/);

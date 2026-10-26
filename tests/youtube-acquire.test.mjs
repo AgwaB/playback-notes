@@ -138,8 +138,24 @@ test("token refusal and failed minting surface as access denials with fixed caus
     (e) =>
       e.code === "SOURCE_ACCESS_DENIED" && e.detail === "transcript-refused",
   );
+  for (const key of [
+    "botguard-challenge",
+    "botguard-integrity",
+    "botguard-mint",
+    "botguard-failed",
+    "download-failed",
+  ])
+    assert.ok(FAILURE_DETAILS[key]);
   const root = await tmp("mint-");
   try {
+    if (process.platform !== "darwin") {
+      // No confined runtime off macOS: minting is refused up front with a fixed cause.
+      await assert.rejects(
+        () => mintYoutubeToken(videoId, { workDir: root, timeoutMs: 20000 }),
+        (e) => e.code === "CAPABILITY_MISSING" && e.detail === "sandbox-unavailable",
+      );
+      return;
+    }
     // The child refuses an invalid binding before any network use.
     await assert.rejects(
       () => mintYoutubeToken("bad id!", { workDir: root, timeoutMs: 20000 }),
@@ -170,14 +186,6 @@ test("token refusal and failed minting surface as access denials with fixed caus
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-  for (const key of [
-    "botguard-challenge",
-    "botguard-integrity",
-    "botguard-mint",
-    "botguard-failed",
-    "download-failed",
-  ])
-    assert.ok(FAILURE_DETAILS[key]);
 });
 
 test("platform order is preserved: [ko, en] manual tracks with no preference select ko, and a preference still wins", async () => {
@@ -680,7 +688,9 @@ test("relay validation: only the two attestation endpoints on https://www.youtub
   );
 });
 
-test("hostile worker output never crashes the parent: garbage, giant lines, control frames, bad ids, premature/duplicate results and non-zero exits are clean rejections; a cooperative child succeeds", async () => {
+test("hostile worker output never crashes the parent: garbage, giant lines, control frames, bad ids, premature/duplicate results and non-zero exits are clean rejections; a cooperative child succeeds", {
+  skip: process.platform !== "darwin" && "macOS sandbox-exec only",
+}, async () => {
   const root = await tmp("hostile-");
   try {
     const ok = {
