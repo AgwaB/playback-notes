@@ -36,6 +36,10 @@ body {
     sans-serif;
   overflow-wrap: anywhere;
 }
+/* Korean breaks between words (spaces), not inside them; overlong runs still wrap. */
+html:lang(ko) body {
+  word-break: keep-all;
+}
 a {
   color: var(--accent);
   text-underline-offset: 0.2em;

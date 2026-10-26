@@ -25,7 +25,7 @@ Accept a normal request such as “이 영상 브리핑해줘” or “이 파�
 
 1. If the source is missing, ask for the video link or local file.
 2. Infer the mode from the request before asking: a summary request (요약, 정리, summary, TL;DR, 핵심만) means **briefing**; a request for depth (자세히, 깊게, 딥다이브, deep-dive, 분석) means **deep-dive**. Only when neither is implied, offer **Briefing / Deep-dive** using the host's choice UI when available, otherwise one short question.
-3. Use the requested language, otherwise the conversation's language. Do not ask unnecessary setup questions or make the user execute commands.
+3. Use the requested language for the report, otherwise the conversation's language; reply to the user in the language they wrote in. Do not ask unnecessary setup questions or make the user execute commands.
 4. If a capability is unavailable, offer a concrete alternative: supplied SRT/VTT/TXT, approved local ASR where supported, approved local OCR of on-screen text for local media, another source, or stopping. Read the failure's `Cause:` to pick the right alternative. Do not silently switch to metadata-only summarization or remote services.
 
 ## 2. Prepare private evidence
@@ -55,7 +55,7 @@ Read [report authoring](references/report-authoring.md), the evidence/report sch
 ## 4. Validate and deliver
 
 1. Run `validate.mjs`. Fix contract/citation errors against evidence; do not weaken validation or fabricate approval to pass it.
-2. Run `render.mjs`, then `export.mjs` with the selected installed Chromium executable for PDF. Export does not call a model. `verify-output.mjs` re-checks the finished revision.
+2. Run `render.mjs`, then `export.mjs` with the selected installed Chromium executable for PDF into a revision directory (`$PUBLIC/<source-id>/<mode>/r1`; see execution reference). Export does not call a model. `verify-output.mjs` re-checks the finished revision.
 3. Inspect actual HTML, Markdown and PDF artifacts. Check timestamps, key conditions, interpretation labels, image captions, long tables/code and output-language fonts. Read the public manifest's `overallStatus` and each artifact status.
 4. If playback is wanted, start `serve.mjs` with the **public output root**, optionally the private job manifest for one exact media mapping. Open the returned loopback URL. Do not expose the server to the network. Stop it when no longer needed.
 5. Deliver direct links to the files, source/analysis limitations, and playback/sharing caveats. `completed` means the requested files exist, not that source claims are independently verified. If any requested file failed, explicitly report incomplete work and the recovery action.

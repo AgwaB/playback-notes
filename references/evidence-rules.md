@@ -5,7 +5,7 @@ The extractor produces `evidence.json`; the host produces the report. Neither tr
 ## Read without losing coverage
 
 1. Read source/extraction metadata, warnings, gaps and timing status.
-2. Read each `chunks/chunk-*.json`. `segmentIds` owns that chunk's segments; `contextSegmentIds` is overlap for understanding, not additional coverage.
+2. Read each `chunks/chunk-*.json`: `{evidenceId, chunkId, notice, context: [segment…], segments: [segment…]}`, each segment `{id, startMs, endMs, text, speaker}`. `segments` are the ones this chunk owns (they correspond to `evidence.chunks[].segmentIds`); `context` is overlap from the previous chunk for understanding, not additional coverage (`contextSegmentIds`). Cite segment `id`s.
 3. Record a chunk as reviewed only after inspecting its content. Maintain notes for mechanisms, conditions, exceptions, examples, counterarguments and uncertainties.
 4. Inspect any frame before citing it. Text mentioning a chart does not prove its visual contents. A frame's `ocrText` is machine-read and may be wrong; open the image, confirm what it shows, and only then add the frame to `inspectedFrameIds`. Visual-only evidence (no segments, OCR frames only) has zero chunks: every statement then cites inspected frames.
 5. Check that all substantive report claims retain enough source context. Do not cite an isolated conclusion while deleting the condition that made it true.

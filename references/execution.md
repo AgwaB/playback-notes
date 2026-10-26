@@ -33,6 +33,8 @@ Optional tools are not installed automatically:
   media/                  # only after copyLocalMedia approval
 ```
 
+`--out-dir` is the revision directory itself (render/export write directly into it); the `<source-id>/<mode>/<revision>` nesting above is the layout to create, e.g. `OUT="$PUBLIC/$SOURCE_ID/briefing/r1"` with `SOURCE_ID` from `evidence.source.id`. A changed report, analysis, sharing policy or renderer needs the next revision directory (`r2`, …); an existing revision is never rewritten with different content.
+
 Neither root may contain the other. The public root cannot contain request/evidence/analysis/source input files. Do not serve the private job. Work directories and files are owner-only where supported; public exports still contain transcript text and must be shared deliberately.
 
 ## Request
