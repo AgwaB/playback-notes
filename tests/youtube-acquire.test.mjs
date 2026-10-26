@@ -240,15 +240,23 @@ test("policy youtubeTokens is validated, participates in cache identity, and You
     normalizeRequest({ ...base, policy: { youtubeTokens: "botguard" } }),
   );
   assert.notEqual(off, on);
+  // Default is `auto`: tokens are minted where the confined runtime exists, never asked for.
+  assert.equal(normalizeRequest({ ...base }).policy.youtubeTokens, "auto");
+  const auto = await ingestionFingerprint(normalizeRequest({ ...base }));
+  assert.notEqual(auto, off);
   const root = await tmp("ytdlp-missing-");
   try {
     await assert.rejects(
       () =>
-        extractSource(normalizeRequest({ ...base, policy: { asr: "local" } }), {
-          workDir: root,
-          localAsrExecutable: process.execPath,
-          localAsrModel: process.execPath,
-        }),
+        // Token off so the caption request is refused and the ASR branch is reached.
+        extractSource(
+          normalizeRequest({ ...base, policy: { asr: "local", youtubeTokens: "off" } }),
+          {
+            workDir: root,
+            localAsrExecutable: process.execPath,
+            localAsrModel: process.execPath,
+          },
+        ),
       (e) =>
         [
           "CAPABILITY_MISSING",

@@ -99,7 +99,7 @@ export async function canary(options) {
       issue(
         `CANARY_CAPTIONS_${state.state.toUpperCase().replace("-", "_")}`,
         {
-          blocked: `The platform refused this anonymous session (cause: ${state.cause}). ${request.policy.youtubeTokens === "botguard" ? "Even with a proof-of-origin token: the gate changed." : 'Try policy.youtubeTokens: "botguard" with user approval.'}`,
+          blocked: `The platform refused this anonymous session (cause: ${state.cause}). ${request.policy.youtubeTokens === "off" ? 'Re-run with policy.youtubeTokens "auto" (the default) or "botguard".' : "Even with a proof-of-origin token: the gate changed."}`,
           broken: `Acquisition itself failed (cause: ${state.cause}). This is a code/update problem, not a permission problem: check bgutils-js/jsdom versions and the adapter.`,
           "no-captions":
             "This video exposes no captions; choose a canary video that has them.",

@@ -19,7 +19,7 @@
 
 ## 구현된 핵심
 
-- SRT/VTT/TXT, 로컬 MP4/오디오, YouTube 자막(HTTP + 로컬 생성 proof-of-origin 토큰, 요청 언어·수동 자막 우선) 증거 획득
+- SRT/VTT/TXT, 로컬 MP4/오디오, YouTube 자막(HTTP + 기본으로 로컬 생성하는 proof-of-origin 토큰 — 모든 YouTube 클라이언트가 하는 방식, 격리 프로세스; 요청 언어·수동 자막 우선) 증거 획득
 - 원본 바이트 해시, 인용 ID, 검토 범위, 부분 승인, 이미지 근거 검증
 - 본문 우선 HTML, 타임스탬프, 전사 패널, 네이티브 플레이어/공식 YouTube API, 실패 시 대체 접근
 - 동일 `report.json`에서 생성하는 Markdown/PDF; 내보내기 단계의 모델 호출 없음
