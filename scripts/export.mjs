@@ -29,6 +29,16 @@ export async function exportReport(options) {
   const formats = options.formats
     ? options.formats.split(",")
     : bundle.request.formats.filter((format) => format !== "html");
+  // An HTML-only request has nothing to export: say so instead of failing, so the same
+  // render → export → verify sequence works for every request.
+  if (!options.formats && !formats.length)
+    return result("export", [], [
+      issue(
+        "NOTHING_TO_EXPORT",
+        "The request asks only for HTML, which render.mjs already wrote; no Markdown or PDF to export.",
+        "info",
+      ),
+    ]);
   if (
     !formats.length ||
     formats.some(

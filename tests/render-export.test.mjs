@@ -59,6 +59,24 @@ test("missing PDF runtime preserves HTML/MD and reports incomplete", async (t) =
     ),
   );
 });
+test("an HTML-only request makes export a no-op success, so render → export → verify always works", async (t) => {
+  const f = await fixture({
+    mutate(d) {
+      d.request.formats = ["html"];
+    },
+  });
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  await render(f.args);
+  const outcome = await exportReport(f.args);
+  assert.equal(outcome.status, "ok");
+  assert.deepEqual(outcome.issues.map((i) => i.code), ["NOTHING_TO_EXPORT"]);
+  assert.equal(
+    (await readJson(path.join(f.out, "manifest.json"))).data.overallStatus,
+    "completed",
+  );
+  // An explicit format the request did not ask for is still a contract error.
+  await assert.rejects(exportReport({ ...f.args, formats: "pdf" }), { code: "INVALID_CONTRACT" });
+});
 test("complete non-PDF requested formats are not treated as missing PDF", async (t) => {
   const f = await fixture({
     mutate(d) {

@@ -481,28 +481,20 @@ test("captions ending after the advertised length leave the duration unknown ins
   );
 });
 
-test("policy youtubeTokens is validated, participates in cache identity, and YouTube ASR needs an explicit yt-dlp", async () => {
+test("there is no token policy (tokens are minted wherever possible), and YouTube ASR needs an explicit yt-dlp", async () => {
   const base = {
     schemaVersion: 1,
     source: { kind: "url", value: watchUrl },
     mode: "briefing",
     outputLanguage: "ko",
   };
-  assert.throws(
-    () => normalizeRequest({ ...base, policy: { youtubeTokens: "cookies" } }),
-    (e) => e.code === "INVALID_CONTRACT",
-  );
-  const off = await ingestionFingerprint(
-    normalizeRequest({ ...base, policy: { youtubeTokens: "off" } }),
-  );
-  const on = await ingestionFingerprint(
-    normalizeRequest({ ...base, policy: { youtubeTokens: "botguard" } }),
-  );
-  assert.notEqual(off, on);
-  // Default is `auto`: tokens are minted where the confined runtime exists, never asked for.
-  assert.equal(normalizeRequest({ ...base }).policy.youtubeTokens, "auto");
-  const auto = await ingestionFingerprint(normalizeRequest({ ...base }));
-  assert.notEqual(auto, off);
+  for (const value of ["off", "auto", "botguard"])
+    assert.throws(
+      () => normalizeRequest({ ...base, policy: { youtubeTokens: value } }),
+      (e) => e.code === "INVALID_CONTRACT",
+      "the removed youtubeTokens setting is refused, not silently ignored",
+    );
+  assert.ok(!("youtubeTokens" in normalizeRequest({ ...base }).policy));
   const root = await tmp("ytdlp-missing-");
   try {
     await assert.rejects(
@@ -512,7 +504,7 @@ test("policy youtubeTokens is validated, participates in cache identity, and You
           normalizeRequest({
             ...base,
             source: { kind: "url", value: "https://www.youtube.com/watch?v=aqz-KE-bpKQ" },
-            policy: { asr: "local", youtubeTokens: "off" },
+            policy: { asr: "local" },
           }),
           {
             workDir: root,
@@ -1121,12 +1113,13 @@ test("no network is reported as NETWORK_UNAVAILABLE (not an unsafe URL or an acc
     }).state,
     "environment",
   );
+  // Since v29 a tokenless refusal means the Android-app list failed too: a gate, not us.
   assert.equal(
     classifyCanary({
       code: "SOURCE_ACCESS_DENIED",
       detail: "transcript-refused-no-token",
     }).state,
-    "environment",
+    "blocked",
   );
   const { FAILURE_DETAILS } = await import("../lib/ingest.mjs");
   for (const key of [

@@ -17,17 +17,15 @@ import { extractYouTubeVideoId } from "@steipete/summarize-core/content/url";
  * differ. `blocked` = the platform gates this session (policy/approval question);
  * `broken` = our adapter, token minting or a tool no longer works (code/update question);
  * `no-captions` = this video simply has none (pick another canary);
- * `environment` = this process has no network or no confined runtime (run elsewhere).
+ * `environment` = this process has no network (run elsewhere).
+ * A refusal with no token possible here (`transcript-refused-no-token`) means the
+ * Android-app caption list failed too, so it is `blocked`, not an environment limit.
  */
 export function classifyCanary(error) {
   if (!error) return { state: "ok", cause: null };
   const cause = error.detail ?? null;
-  // Our environment, not YouTube and not the adapter: no network or no confined runtime.
-  if (
-    error.code === "NETWORK_UNAVAILABLE" ||
-    cause === "sandbox-unavailable" ||
-    cause === "transcript-refused-no-token"
-  )
+  // Our environment, not YouTube and not the adapter.
+  if (error.code === "NETWORK_UNAVAILABLE" || cause === "sandbox-unavailable")
     return { state: "environment", cause: cause ?? error.code };
   if (
     ["ASR_REQUIRED", "TRANSCRIPT_UNAVAILABLE"].includes(error.code) ||
@@ -38,7 +36,12 @@ export function classifyCanary(error) {
     return { state: "broken", cause };
   if (
     error.code === "SOURCE_ACCESS_DENIED" &&
-    ["transcript-refused", "bot-check", "transcript-empty"].includes(cause)
+    [
+      "transcript-refused",
+      "transcript-refused-no-token",
+      "bot-check",
+      "transcript-empty",
+    ].includes(cause)
   )
     return { state: "blocked", cause };
   if (["SOURCE_ACCESS_DENIED", "SOURCE_UNAVAILABLE"].includes(error.code))
@@ -91,13 +94,17 @@ export async function canary(options) {
   try {
     const extracted = await extractSource(probe, { workDir: scratch });
     state = { state: "ok", cause: null };
-    const token = extracted.extraction.warnings.some(
-      (w) => w.code === "BOTGUARD_TOKEN",
-    );
+    const warned = (code) =>
+      extracted.extraction.warnings.some((w) => w.code === code);
+    const via = warned("BOTGUARD_TOKEN")
+      ? ", proof-of-origin token used"
+      : warned("CAPTIONS_ANDROID_CLIENT")
+        ? ", no token here: read from the Android-app caption list"
+        : "";
     issues.push(
       issue(
         "CANARY_CAPTIONS_OK",
-        `Captions acquired: ${extracted.segments.length} segments, timing ${extracted.extraction.timing}${token ? ", proof-of-origin token used" : ""}.`,
+        `Captions acquired: ${extracted.segments.length} segments, timing ${extracted.extraction.timing}${via}.`,
         "warning",
       ),
     );
@@ -107,12 +114,12 @@ export async function canary(options) {
       issue(
         `CANARY_CAPTIONS_${state.state.toUpperCase().replace("-", "_")}`,
         {
-          blocked: `The platform refused this anonymous session (cause: ${state.cause}). ${request.policy.youtubeTokens === "off" ? 'Re-run with policy.youtubeTokens "auto" (the default) or "botguard".' : "Even with a proof-of-origin token: the gate changed."}`,
+          blocked: `The platform refused this anonymous session (cause: ${state.cause}). ${state.cause === "transcript-refused-no-token" ? "No token could be minted here and the Android-app caption list was refused too: YouTube may have extended its gate; on macOS outside a host sandbox the token path may still work." : "The web track and the Android-app list were both refused: the gate changed."}`,
           broken: `Acquisition itself failed (cause: ${state.cause}). This is a code/update problem, not a permission problem: check bgutils-js/jsdom versions and the adapter.`,
           "no-captions":
             "This video exposes no captions; choose a canary video that has them.",
           unavailable: `The video is unavailable (cause: ${state.cause}); choose another canary video.`,
-          environment: `This process cannot run the check (cause: ${state.cause}): no network access or no confined token runtime here, e.g. inside a host agent's sandboxed shell. Run the canary outside that sandbox; this says nothing about YouTube or the adapter.`,
+          environment: `This process cannot run the check (cause: ${state.cause}): no network access here, e.g. inside a host agent's sandboxed shell. Run the canary outside that sandbox; this says nothing about YouTube or the adapter.`,
         }[state.state] ?? "Unknown canary outcome.",
         "error",
       ),
