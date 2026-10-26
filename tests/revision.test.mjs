@@ -341,10 +341,16 @@ test("publishTranscript false keeps seekable timestamps but no transcript text; 
   await render(f.args);
   const html = await readFile(path.join(f.out, "index.html"), "utf8");
   // The source panel carries no transcript text (quotes the host chose for the report stay).
-  const panel = html.slice(html.indexOf('<div id="transcript"'), html.indexOf("</aside>"));
+  const panel = html.slice(
+    html.indexOf('<div id="transcript"'),
+    html.indexOf("</aside>"),
+  );
   assert.ok(panel.length > 0);
   for (const segment of f.data.evidence.segments)
-    assert.ok(!panel.includes(segment.text), `transcript text must not appear in the panel: ${segment.text.slice(0, 30)}`);
+    assert.ok(
+      !panel.includes(segment.text),
+      `transcript text must not appear in the panel: ${segment.text.slice(0, 30)}`,
+    );
   assert.ok(panel.includes('id="tx-seg-000001"'), "citation anchors remain");
   assert.ok(html.includes("전체 자막은 이 문서에 포함하지 않았습니다"));
   const manifest = (await readJson(path.join(f.out, "manifest.json"))).data;
@@ -358,7 +364,11 @@ test("publishTranscript false keeps seekable timestamps but no transcript text; 
   t.after(() => rm(g.root, { recursive: true, force: true }));
   await render(g.args);
   const full = await readFile(path.join(g.out, "index.html"), "utf8");
-  assert.ok(full.slice(full.indexOf('<div id="transcript"')).includes(g.data.evidence.segments[1].text));
+  assert.ok(
+    full
+      .slice(full.indexOf('<div id="transcript"'))
+      .includes(g.data.evidence.segments[1].text),
+  );
 });
 
 test("verify-output accepts a revision rendered by this skill and flags a modified renderer or an edited artifact", async (t) => {
@@ -372,7 +382,13 @@ test("verify-output accepts a revision rendered by this skill and flags a modifi
   const manifest = (await readJson(manifestFile)).data;
   assert.match(manifest.renderer.sha256, /^[a-f0-9]{64}$/);
   // A revision whose manifest names another renderer (what a forked copy records).
-  await writeFile(manifestFile, jsonBytes({ ...manifest, renderer: { ...manifest.renderer, sha256: "0".repeat(64) } }));
+  await writeFile(
+    manifestFile,
+    jsonBytes({
+      ...manifest,
+      renderer: { ...manifest.renderer, sha256: "0".repeat(64) },
+    }),
+  );
   const forked = await verifyOutput({ "out-dir": f.out });
   assert.equal(forked.status, "error");
   assert.ok(forked.issues.some((i) => i.code === "RENDERER_MISMATCH"));

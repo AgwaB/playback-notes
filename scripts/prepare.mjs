@@ -134,7 +134,7 @@ export async function prepare(options) {
     // travel with the frames.
     const sheet = extracted.raw?.visualOcr?.contactSheet;
     if (sheet && extracted.assetRoot)
-      for (const file of [sheet.path, sheet.index])
+      for (const file of [...sheet.sheets, sheet.index])
         await atomicWrite(
           workDir,
           file,
@@ -188,7 +188,9 @@ export async function prepare(options) {
     // Review aids for key-scene selection are listed so the host sees them in the envelope.
     if (sheet && extracted.assetRoot)
       artifacts.push(
-        await artifact(workDir, sheet.path, "contact-sheet"),
+        ...(await Promise.all(
+          sheet.sheets.map((file) => artifact(workDir, file, "contact-sheet")),
+        )),
         await artifact(workDir, sheet.index, "contact-sheet-index"),
       );
     return result(

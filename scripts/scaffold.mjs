@@ -51,7 +51,7 @@ export async function scaffold(options) {
       ? `Segments: ${segments.length} (${segments[0].id} … ${segments.at(-1).id}); chunks: ${evidence.chunks.map((c) => c.id).join(", ")} — list the ones you read in analysis-ledger.json reviewedChunkIds.`
       : "No transcript segments: cite inspected frames only.",
     evidence.frames.length
-      ? `Frames: ${evidence.frames.length}${evidence.frames.some((f) => f.ocrText) ? " (with OCR hints)" : ""}; review assets/contact-sheet.jpg with assets/contact-sheet.txt when present, open candidates at full size, and list every cited frame in analysis-ledger.json inspectedFrameIds.`
+      ? `Frames: ${evidence.frames.length}${evidence.frames.some((f) => f.ocrText) ? " (with OCR hints)" : ""}; review the contact sheets (assets/contact-sheet-NN.jpg) with assets/contact-sheet.txt when present, open candidates at full size, and list every cited frame in analysis-ledger.json inspectedFrameIds.`
       : "No frames.",
     "Then run validate.mjs; fix what it reports against the evidence.",
   ];

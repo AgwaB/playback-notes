@@ -853,17 +853,16 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
     "no OCR text in frames mode",
   );
   assert.deepEqual(result.raw.visualOcr.contactSheet, {
-    path: "assets/contact-sheet.jpg",
+    sheets: ["assets/contact-sheet-01.jpg"],
     index: "assets/contact-sheet.txt",
-    columns: 3,
-    rows: 1,
+    tilesPerSheet: 24,
   });
   const index = await (await import("node:fs/promises")).readFile(path.join(result.assetRoot, "assets", "contact-sheet.txt"), "utf8");
-  assert.match(index, /^r1c1\s+frame-0001\s+00:00\s+assets\/frame-0001\.jpg$/m);
-  assert.match(index, /^r1c3\s+frame-0003\s+00:04\s+assets\/frame-0003\.jpg$/m);
+  assert.match(index, /^1\s+r1c1\s+frame-0001\s+00:00\s+assets\/frame-0001\.jpg$/m);
+  assert.match(index, /^1\s+r1c3\s+frame-0003\s+00:04\s+assets\/frame-0003\.jpg$/m);
   const { readFile: rf } = await import("node:fs/promises");
   const sheet = await rf(
-    path.join(result.assetRoot, "assets", "contact-sheet.jpg"),
+    path.join(result.assetRoot, "assets", "contact-sheet-01.jpg"),
   );
   const { jpegSize } = await import("../lib/ingest-worker.mjs");
   assert.deepEqual(
@@ -871,6 +870,7 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
     { width: 966, height: 182 },
     "3 tiles of 322×182 (320 px + 1 px border)",
   );
+  assert.equal(result.raw.visualOcr.coverage.complete, true);
   assert.ok(
     result.extraction.warnings.some((w) => w.code === "FRAMES_SAMPLED"),
   );
@@ -941,4 +941,39 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
     "user-transcript",
     "the transcript path is untouched by frame sampling",
   );
+});
+
+
+test("long videos: the default interval widens to fit the cap and reach the end; a cut storm falls back to interval-only; explicit settings that stop early are reported; sheets paginate at 24", async () => {
+  const make = async (name, filter, seconds) => {
+    const file = path.join(root, name);
+    await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `color=c=gray:s=64x36:r=1:d=${seconds}`, "-vf", filter, "-c:v", "libx264", "-g", "1", "-pix_fmt", "yuv420p", "-y", file], { env: isolatedEnvironment(root), timeout: 120000, shell: false });
+    return file;
+  };
+  const req = (value) => normalizeRequest({ schemaVersion: 1, source: { kind: "local", value }, mode: "briefing", outputLanguage: "ko", formats: ["html"], transcriptFile: srt, policy: { asr: "off", visual: "frames" } });
+  const { readFile: rf } = await import("node:fs/promises");
+  // (a) One hour, no cuts: interval = ceil(3600 / 119) = 31 s, ~117 frames, last near the end.
+  const hour = await make("hour.mp4", "null", 3600);
+  const a = await extractSource(req(hour), { workDir: path.join(jobs, "long-a") });
+  assert.equal(a.raw.visualOcr.intervalSeconds, 31);
+  assert.ok(a.frames.length <= 120 && a.frames.length >= 110, String(a.frames.length));
+  assert.ok(a.frames.at(-1).timestampMs >= 3600000 - 31000, "reaches the end");
+  assert.equal(a.raw.visualOcr.coverage.complete, true);
+  assert.ok(!a.extraction.warnings.some((w) => /FRAMES_(TRUNCATED|CUTS_DROPPED)/.test(w.code)));
+  assert.equal(a.raw.visualOcr.contactSheet.sheets.length, Math.ceil(a.frames.length / 24));
+  const idx = await rf(path.join(a.assetRoot, "assets", "contact-sheet.txt"), "utf8");
+  assert.match(idx, /^2\s+r1c1\s+frame-0025\s/m, "frame 25 opens sheet 2");
+  // (b) Ten minutes with a hard cut every 2 s (steady frames between, so ffmpeg scores each
+  //     change as a cut): cuts would exhaust the cap at ~4 min; the interval-only pass (20 s)
+  //     covers the whole video and the drop is reported.
+  const storm = await make("storm.mp4", "geq=lum='if(mod(floor(N/2),2),16,235)':cb=128:cr=128", 600);
+  const b = await extractSource(req(storm), { workDir: path.join(jobs, "long-b") });
+  assert.equal(b.raw.visualOcr.coverage.cutsDropped, true);
+  assert.equal(b.raw.visualOcr.coverage.complete, true);
+  assert.ok(b.frames.at(-1).timestampMs >= 580000, String(b.frames.at(-1).timestampMs));
+  assert.ok(b.extraction.warnings.some((w) => w.code === "FRAMES_CUTS_DROPPED"));
+  // (c) Explicit settings that cannot reach the end are reported, not silent.
+  const c = await extractSource(req(storm), { workDir: path.join(jobs, "long-c"), ocrSampleSeconds: 1, ocrMaxFrames: 5 });
+  assert.equal(c.raw.visualOcr.coverage.complete, false);
+  assert.ok(c.extraction.warnings.some((w) => w.code === "FRAMES_TRUNCATED" && /00:04 of 10:00/.test(w.message)), JSON.stringify(c.extraction.warnings.map((w) => w.message)));
 });
