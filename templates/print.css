@@ -1,0 +1,92 @@
+@page {
+  size: A4;
+  margin: 18mm 16mm;
+}
+@media print {
+  body,
+  body.pinned {
+    padding: 0;
+    color: #111;
+    background: white;
+    font-size: 10.5pt;
+    line-height: 1.65;
+  }
+  .skip-link,
+  .toc,
+  .toolbar,
+  #source-panel,
+  .export-status {
+    display: none !important;
+  }
+  .layout,
+  body.pinned .layout {
+    display: block;
+    padding: 0;
+    max-width: none;
+  }
+  .masthead {
+    padding: 0 0 5mm;
+  }
+  h1 {
+    font-size: 25pt;
+  }
+  h2 {
+    font-size: 16pt;
+    break-after: avoid;
+  }
+  h3 {
+    break-after: avoid;
+  }
+  section {
+    margin-bottom: 5mm;
+    padding-bottom: 4mm;
+  }
+  .overview {
+    background: #f3f3ef;
+  }
+  p,
+  li {
+    orphans: 3;
+    widows: 3;
+  }
+  a {
+    color: #7c2920;
+  }
+  .table-wrap,
+  pre {
+    overflow: visible;
+  }
+  table {
+    font-size: 8.5pt;
+    table-layout: fixed;
+  }
+  thead {
+    display: table-header-group;
+  }
+  th,
+  td {
+    overflow-wrap: anywhere;
+    padding: 2mm;
+  }
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 8.5pt;
+  }
+  figure {
+    margin: 4mm 0;
+    break-inside: avoid;
+  }
+  img {
+    max-height: 180mm;
+    object-fit: contain;
+  }
+  figcaption {
+    break-before: avoid;
+  }
+  .references,
+  .limitations,
+  footer {
+    font-size: 8.5pt;
+  }
+}

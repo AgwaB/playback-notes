@@ -1,0 +1,449 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://video-summarizer.invalid/report",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "evidenceRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "id",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "mode": {
+      "enum": [
+        "briefing",
+        "deep-dive"
+      ]
+    },
+    "outputLanguage": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 80
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "summary": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/statement"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+          },
+          "heading": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/block"
+            },
+            "minItems": 1,
+            "maxItems": 1000
+          }
+        },
+        "required": [
+          "id",
+          "heading",
+          "blocks"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 500
+    },
+    "caveats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/statement"
+      },
+      "minItems": 0,
+      "maxItems": 500
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "evidenceRef",
+    "mode",
+    "outputLanguage",
+    "title",
+    "summary",
+    "sections",
+    "caveats"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "statement": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "attribution": {
+          "enum": [
+            "source",
+            "interpretation"
+          ]
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "segment",
+                  "frame"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "text",
+        "attribution",
+        "citations"
+      ],
+      "additionalProperties": false
+    },
+    "block": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "paragraph"
+            },
+            "statement": {
+              "$ref": "#/definitions/statement"
+            }
+          },
+          "required": [
+            "type",
+            "statement"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "list"
+            },
+            "ordered": {
+              "type": "boolean"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/statement"
+              },
+              "minItems": 1,
+              "maxItems": 1000
+            }
+          },
+          "required": [
+            "type",
+            "ordered",
+            "items"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "table"
+            },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20000
+              },
+              "minItems": 1,
+              "maxItems": 50
+            },
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/statement"
+                },
+                "minItems": 1,
+                "maxItems": 50
+              },
+              "minItems": 1,
+              "maxItems": 5000
+            }
+          },
+          "required": [
+            "type",
+            "columns",
+            "rows"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "quote"
+            },
+            "statement": {
+              "$ref": "#/definitions/statement"
+            },
+            "verbatim": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "type",
+            "statement",
+            "verbatim"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "code"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            },
+            "language": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 20000
+            },
+            "attribution": {
+              "enum": [
+                "source",
+                "interpretation"
+              ]
+            },
+            "citations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "segment",
+                      "frame"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 100
+            }
+          },
+          "required": [
+            "type",
+            "text",
+            "language",
+            "attribution",
+            "citations"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "diagram"
+            },
+            "kind": {
+              "enum": [
+                "stack",
+                "flow"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "alt": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "nodes": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 9,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "sublabel": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 60
+                  },
+                  "focal": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "label",
+                  "sublabel",
+                  "focal"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "edges": {
+              "type": "array",
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+                  },
+                  "to": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+                  },
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 14
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "label"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "caption": {
+              "$ref": "#/definitions/statement"
+            }
+          },
+          "required": [
+            "type",
+            "kind",
+            "id",
+            "title",
+            "alt",
+            "nodes",
+            "edges",
+            "caption"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "figure"
+            },
+            "frameId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+            },
+            "caption": {
+              "$ref": "#/definitions/statement"
+            },
+            "alt": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          "required": [
+            "type",
+            "frameId",
+            "caption",
+            "alt"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,287 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { rm } from "node:fs/promises";
+import { fixture } from "./helpers.mjs";
+import { htmlDocument } from "../lib/rendering.mjs";
+import { markdownDocument } from "../lib/markdown.mjs";
+import * as diagramModule from "../lib/diagram.mjs";
+const { diagramSvg, diagramText, layerFlow } = diagramModule;
+
+const cite = [{ kind: "segment", id: "seg-000001" }];
+const caption = {
+  text: "강연자의 인과 설명을 도식화한 것이다.",
+  attribution: "interpretation",
+  citations: cite,
+};
+const node = (id, label, extra = {}) => ({
+  id,
+  label,
+  sublabel: null,
+  focal: false,
+  ...extra,
+});
+const flow = () => ({
+  type: "diagram",
+  kind: "flow",
+  id: "cause",
+  title: "원인 사슬",
+  alt: "산업주의에서 창의역량 상실까지의 인과 사슬",
+  nodes: [
+    node("a", "산업주의 수요", { focal: true }),
+    node("b", "유용한 과목 우위"),
+    node("c", "대학의 자기복제"),
+    node("d", "지성 = 학문능력"),
+    node("e", "재능 낙인 <script>"),
+  ],
+  edges: [
+    { from: "a", to: "b", label: null },
+    { from: "a", to: "c", label: "설계" },
+    { from: "b", to: "d", label: null },
+    { from: "c", to: "d", label: null },
+    { from: "d", to: "e", label: null },
+  ],
+  caption,
+});
+const stack = () => ({
+  type: "diagram",
+  kind: "stack",
+  id: "rank",
+  title: "과목 위계",
+  alt: "수학·언어가 위, 예술이 아래",
+  nodes: [
+    node("top", "수학 · 언어"),
+    node("mid", "인문학"),
+    node("low", "예술", { sublabel: "미술·음악 > 연극·춤", focal: true }),
+  ],
+  edges: [],
+  caption,
+});
+async function withBlock(block, t) {
+  const f = await fixture({
+    mutate(d) {
+      d.report.sections[0].blocks.push(block);
+    },
+  });
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  return f;
+}
+
+test("flow and stack diagrams render deterministic, escaped, orthogonal SVG with a11y title/desc", async (t) => {
+  const f = await withBlock(flow(), t);
+  const html = htmlDocument(f.bundle);
+  assert.ok(html.includes('<figure class="diagram" id="diagram-cause">'));
+  assert.ok(html.includes('aria-labelledby="dg-cause-title dg-cause-desc"'));
+  assert.ok(
+    html.includes("재능 낙인 &lt;script&gt;") &&
+      !html.includes("낙인 <script>"),
+  );
+  const svg = diagramSvg(flow());
+  const paths = [...svg.matchAll(/<path d="([^"]+)" fill="none"/g)].map(
+    (m) => m[1],
+  );
+  assert.equal(paths.length, 5);
+  for (const d of paths)
+    assert.doesNotMatch(
+      d,
+      /L/,
+      "connectors are V/H/Q only, no diagonal L segments",
+    );
+  assert.ok(
+    svg.indexOf("<path d=") < svg.indexOf('<rect x="') ||
+      svg.indexOf('fill="none"') < svg.indexOf("<text"),
+    "edges are drawn before node boxes",
+  );
+  assert.equal(
+    (svg.match(/stroke="#b5382b"/g) ?? []).length,
+    1,
+    "one focal node",
+  );
+  assert.equal(diagramSvg(flow()), svg, "deterministic");
+  assert.deepEqual(
+    layerFlow(flow().nodes, flow().edges).map((r) => r.map((n) => n.id)),
+    [["a"], ["b", "c"], ["d"], ["e"]],
+  );
+  const stackSvg = diagramSvg(stack());
+  assert.ok(
+    stackSvg.includes("미술·음악 &gt; 연극·춤") &&
+      !stackSvg.includes("<path d="),
+  );
+});
+
+test("Markdown exports the diagram as structured text, not an image or raw SVG", async (t) => {
+  const f = await withBlock(flow(), t);
+  const md = markdownDocument(f.bundle);
+  assert.ok(md.includes("**원인 사슬**"));
+  assert.ok(md.includes("산업주의 수요 → 대학의 자기복제 (설계)"));
+  assert.ok(!md.includes("<svg"));
+  assert.deepEqual(diagramText(stack()), [
+    "1. 수학 · 언어",
+    "2. 인문학",
+    "3. 예술 — 미술·음악 > 연극·춤",
+  ]);
+});
+
+test("diagram contract rejects unknown refs, cycles, isolated nodes, >2 focal, stack edges and extras", async () => {
+  const cases = [
+    [
+      "unknown node",
+      (b) => {
+        b.edges[0].to = "zzz";
+      },
+      "INVALID_REFERENCE",
+    ],
+    [
+      "self loop",
+      (b) => {
+        b.edges[0].to = "a";
+      },
+      "INVALID_REFERENCE",
+    ],
+    [
+      "cycle",
+      (b) => {
+        b.edges.push({ from: "e", to: "a", label: null });
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "isolated node",
+      (b) => {
+        b.nodes.push(node("f", "고립"));
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "three focal",
+      (b) => {
+        b.nodes[1].focal = true;
+        b.nodes[2].focal = true;
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "duplicate node id",
+      (b) => {
+        b.nodes[1].id = "a";
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "duplicate edge",
+      (b) => {
+        b.edges.push({ ...b.edges[0] });
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "stack with edges",
+      (b) => {
+        b.kind = "stack";
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "flow without edges",
+      (b) => {
+        b.edges = [];
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "extra field",
+      (b) => {
+        b.svg = "<svg/>";
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "long edge label",
+      (b) => {
+        b.edges[1].label = "x".repeat(15);
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "too many nodes",
+      (b) => {
+        for (let i = 0; i < 5; i++) {
+          b.nodes.push(node(`n${i}`, `n${i}`));
+          b.edges.push({ from: "e", to: `n${i}`, label: null });
+        }
+      },
+      "INVALID_CONTRACT",
+    ],
+    [
+      "uncited caption",
+      (b) => {
+        b.caption = {
+          ...caption,
+          citations: [{ kind: "segment", id: "seg-999999" }],
+        };
+      },
+      "INVALID_REFERENCE",
+    ],
+  ];
+  for (const [name, mutateBlock, code] of cases) {
+    const block = flow();
+    mutateBlock(block);
+    await assert.rejects(
+      () =>
+        fixture({
+          mutate(d) {
+            d.report.sections[0].blocks.push(block);
+          },
+        }),
+      (error) =>
+        error.code === code ||
+        (code === "INVALID_CONTRACT" &&
+          /INVALID_CONTRACT|SCHEMA/.test(error.code)),
+      name,
+    );
+  }
+});
+
+test("long labels wrap/ellipsize inside boxes, row-skipping edges use the side lane, parallel runs are offset", () => {
+  const { fitText, textWidth } = diagramModule;
+  assert.deepEqual(
+    fitText("A 아주아주아주 긴 라벨 텍스트 40자까지 허용되는 경우", 15, 200, 2)
+      .length,
+    2,
+  );
+  const [, second] = fitText(
+    "A 아주아주아주 긴 라벨 텍스트 40자까지 허용되는 경우",
+    15,
+    200,
+    2,
+  );
+  assert.ok(second.endsWith("…") && textWidth(second, 15) <= 200);
+  assert.deepEqual(fitText("short", 15, 200, 2), ["short"]);
+  const block = flow();
+  block.nodes.push(node("f", "F"), node("g", "G"));
+  block.edges.push(
+    { from: "e", to: "f", label: null },
+    { from: "f", to: "g", label: null },
+    { from: "e", to: "g", label: "SKIP" },
+  );
+  const svg = diagramSvg(block);
+  assert.match(svg, /viewBox="0 0 668 \d+"/, "lane widens the canvas");
+  const paths = [...svg.matchAll(/<path d="([^"]+)" fill="none"/g)].map(
+    (m) => m[1],
+  );
+  assert.equal(paths.length, 8);
+  const lane = paths.find((d) => /H6(?:3\d|4\d)/.test(d));
+  assert.ok(lane, "skip edge routes through the right lane");
+  for (const d of paths) assert.doesNotMatch(d, /L/);
+  assert.ok(
+    svg.includes("<title>A 아주") === false,
+    "no tooltip when label fits",
+  );
+  const a2b = paths[0],
+    a2c = paths[1];
+  const midOf = (d) => Number(/V([\d.]+) Q/.exec(d)?.[1]);
+  assert.notEqual(
+    midOf(a2b),
+    midOf(a2c),
+    "parallel horizontal runs from one row get distinct heights",
+  );
+});

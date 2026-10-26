@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="{{language}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>{{title}}</title>
+<!-- STYLE -->
+</head>
+<body>
+<a class="skip-link" href="#main">{{ui.skip}}</a>
+<header class="masthead"><div class="eyebrow">VIDEO NOTES · {{modeLabel}}</div><h1>{{title}}</h1>
+<p class="metadata">{{source.displayName}} · {{language}} · {{scopeLabel}} {{scope}}</p>
+<div class="toolbar"><button id="open-source" type="button">{{ui.open}}</button>{{#each exports}}{{#if available}}<a href="{{path}}" download>{{format}}</a>{{else}}<span>{{format}} · {{../ui.failedFormat}}</span>{{/if}}{{/each}}</div></header>
+<div class="layout">
+<nav class="toc" aria-label="{{ui.contents}}"><details open><summary>{{ui.contents}}</summary><ol class="topics"><li><a href="#overview">{{ui.overview}}</a></li>{{#each sections}}<li><a href="#section-{{id}}">{{heading}}</a></li>{{/each}}<li><a href="#limitations">{{ui.limitations}}</a></li></ol></details></nav>
+<main id="main">
+<section id="overview" class="overview"><h2>{{ui.overview}}</h2><ul>{{#each summary}}<li>{{> statement}}</li>{{/each}}</ul></section>
+{{#each sections}}<section id="section-{{id}}"><h2>{{heading}}</h2>
+{{#each blocks}}
+{{#if (eq type "paragraph")}}<p>{{> statement statement}}</p>{{/if}}
+{{#if (eq type "list")}}{{#if ordered}}<ol>{{#each items}}<li>{{> statement}}</li>{{/each}}</ol>{{else}}<ul>{{#each items}}<li>{{> statement}}</li>{{/each}}</ul>{{/if}}{{/if}}
+{{#if (eq type "table")}}<div class="table-wrap" tabindex="0"><table><thead><tr>{{#each columns}}<th scope="col">{{this}}</th>{{/each}}</tr></thead><tbody>{{#each rows}}<tr>{{#each this}}<td>{{> statement}}</td>{{/each}}</tr>{{/each}}</tbody></table></div>{{/if}}
+{{#if (eq type "quote")}}<blockquote>{{#unless verbatim}}<span class="badge">{{@root.ui.paraphrase}}</span>{{/unless}}{{> statement statement}}</blockquote>{{/if}}
+{{#if (eq type "code")}}{{#if interpretation}}<span class="badge">{{@root.ui.reconstructed}}</span>{{/if}}<pre><code>{{text}}</code></pre><div class="code-citations">{{> citations}}</div>{{/if}}
+{{#if (eq type "diagram")}}<figure class="diagram" id="diagram-{{id}}"><p class="diagram-title">{{title}}</p><div class="diagram-wrap">{{{svg}}}</div><figcaption>{{> statement caption}}</figcaption></figure>{{/if}}
+{{#if (eq type "figure")}}<figure id="frame-{{frameId}}"><img src="{{asset}}" alt="{{alt}}" loading="lazy"><figcaption>{{> statement caption}}</figcaption></figure>{{/if}}
+{{/each}}</section>{{/each}}
+{{#if caveats.length}}<section id="caveats"><h2>{{ui.caveats}}</h2><ul>{{#each caveats}}<li>{{> statement}}</li>{{/each}}</ul></section>{{/if}}
+<section id="limitations" class="limitations"><h2>{{ui.limitations}}</h2><ul>{{#each limitations}}<li>{{this}}</li>{{/each}}</ul><p>{{privacyNotice}}</p></section>
+{{#if citedFrames.length}}<section class="cited-frames"><h2>{{ui.frames}}</h2>{{#each citedFrames}}<figure id="frame-{{id}}"><img src="{{assetPath}}" alt="{{ui.frames}} {{label}}" loading="lazy"><figcaption>{{#if href}}<a class="ts" href="{{href}}" rel="noopener noreferrer">{{label}}</a>{{else}}<span class="ts">{{label}}</span>{{/if}}</figcaption></figure>{{/each}}</section>{{/if}}
+{{#if exportIssues.length}}<section class="export-status"><h2>{{ui.errors}}</h2><ul>{{#each exportIssues}}<li>{{message}}</li>{{/each}}</ul></section>{{/if}}
+<section class="references"><h2>{{ui.refs}}</h2><p>{{source.displayName}}{{#if sourceHref}} · <a href="{{sourceHref}}" rel="noopener noreferrer">{{ui.original}}</a>{{/if}}</p></section>
+<footer><p>{{ui.generated}}</p><details{{#if print}} open{{/if}}><summary>Provenance</summary><p>report SHA-256: {{reportSha256}}</p><p>evidence SHA-256: {{evidenceSha256}}</p></details></footer>
+</main></div>
+<aside id="source-panel" hidden aria-label="{{ui.source}}" data-kind="{{source.playback.kind}}" data-locator="{{playerLocator}}" data-media-type="{{source.mediaType}}" data-duration="{{source.durationMs}}" data-unavailable="{{ui.unavailable}}" data-preparing="{{ui.preparing}}">
+<div class="panel-toolbar"><h2>{{ui.source}}</h2><button id="pin-source" type="button" aria-pressed="false">{{ui.pin}}</button><button id="close-source" type="button">{{ui.close}}</button></div>
+<div id="player-slot"></div><p id="player-status" role="status" aria-live="polite"></p>{{#if sourceHref}}<a id="source-fallback" href="{{sourceHref}}" rel="noopener noreferrer" target="_blank">{{ui.original}}</a>{{/if}}
+<label class="follow-control"><input id="follow-playback" type="checkbox"> {{ui.follow}}</label>
+<div id="transcript" tabindex="0"><h3>{{ui.transcript}}</h3>{{#each segments}}<p id="tx-{{id}}" data-start="{{startMs}}" data-end="{{endMs}}">{{#if timed}}<button class="transcript-time" type="button" data-ms="{{startMs}}">{{label}}</button>{{else}}<span class="untimed">{{label}}</span>{{/if}}{{#if speaker}}<strong>{{speaker}}</strong> {{/if}}{{text}}</p>{{/each}}</div>
+</aside>
+<!-- PLAYER -->
+</body></html>

@@ -1,0 +1,833 @@
+import test, { before, after } from "node:test";
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  rm,
+  readdir,
+  copyFile,
+} from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { extractSource, FAILURE_DETAILS } from "../lib/ingest.mjs";
+import { makeEvidence } from "../lib/evidence.mjs";
+import {
+  validateEvidence,
+  validateData,
+  normalizeRequest,
+} from "../lib/validation.mjs";
+import { assertPlayability, jpegSize } from "../lib/ingest-worker.mjs";
+import { rankCaptionTracks } from "../lib/caption-tracks.mjs";
+import { parseYoutubeCapture } from "../lib/youtube-capture.mjs";
+import { isolatedEnvironment } from "../lib/ingest.mjs";
+
+const exec = promisify(execFile);
+let root, jobs, media, srt, tesseract;
+before(async () => {
+  root = await mkdtemp(path.join(os.tmpdir(), "ocr-test-"));
+  jobs = path.join(root, "jobs");
+  await mkdir(jobs);
+  media = path.join(root, "slides.mp4");
+  srt = path.join(root, "slides.srt");
+  // Three hard scene cuts (red → green → blue), 2 s each: scene detection yields frames at ~2 s and ~4 s.
+  await exec(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=320x180:d=2",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=green:s=320x180:d=2",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=blue:s=320x180:d=2",
+      "-filter_complex",
+      "[0:v][1:v][2:v]concat=n=3:v=1:a=0",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      media,
+    ],
+    { env: isolatedEnvironment(root), timeout: 30000, shell: false },
+  );
+  await writeFile(
+    srt,
+    "1\n00:00:00,500 --> 00:00:01,500\n첫 번째 슬라이드 설명입니다.\n",
+  );
+  // Mock tesseract: emits deterministic text per frame; repeats the second frame's text to exercise dedupe.
+  tesseract = path.join(root, "tesseract");
+  await writeFile(
+    tesseract,
+    `#!${process.execPath}\nconst f=process.argv[2];const n=Number(/frame-(\\d+)/.exec(f)?.[1]??0);const texts={1:"보관 온도는 20도 이하 <script>x</script>",2:"보관 온도는 20도 이하 <script>x</script>",3:"a"};process.stdout.write(texts[n]??("frame text number "+n));\n`,
+    { mode: 0o700 },
+  );
+});
+after(async () => {
+  if (root) await rm(root, { recursive: true, force: true });
+});
+const request = (policy = {}) =>
+  normalizeRequest({
+    schemaVersion: 1,
+    source: { kind: "local", value: media },
+    mode: "briefing",
+    outputLanguage: "ko",
+    formats: ["html"],
+    transcriptFile: srt,
+    policy: { asr: "off", ...policy },
+  });
+
+test("local OCR samples scene changes with ffmpeg, OCRs via the explicit executable, dedupes and keeps only readable frames", async () => {
+  const work = path.join(jobs, "ocr");
+  const result = await extractSource(request({ visual: "local-ocr" }), {
+    workDir: work,
+    tesseractExecutable: tesseract,
+    ocrLanguages: "kor+eng",
+    ocrSampleSeconds: 2,
+  });
+  assert.ok(result.frames.length >= 1, "at least one readable frame");
+  const first = result.frames[0];
+  assert.match(first.assetPath, /^assets\/frame-\d{4}\.jpg$/);
+  assert.equal(first.ocrText, "보관 온도는 20도 이하 <script>x</script>");
+  assert.ok(first.width === 320 && first.height === 180);
+  assert.ok(
+    Number.isInteger(first.timestampMs) &&
+      first.timestampMs >= 0 &&
+      first.timestampMs <= 6000,
+  );
+  assert.equal(
+    result.frames.filter((f) => f.ocrText.includes("20도")).length,
+    1,
+    "duplicate frame text suppressed",
+  );
+  assert.ok(
+    !result.frames.some((f) => f.ocrText === "a"),
+    "sub-threshold text dropped",
+  );
+  assert.ok(
+    result.extraction.warnings.some((w) => w.code === "VISUAL_OCR_UNVERIFIED"),
+  );
+  assert.equal(result.raw.visualOcr.languages, "kor+eng");
+  const files = await readdir(path.join(result.assetRoot, "assets"));
+  assert.deepEqual(
+    files.sort(),
+    result.frames.map((f) => path.basename(f.assetPath)).sort(),
+    "only kept frames remain on disk",
+  );
+  const evidence = makeEvidence(result);
+  assert.equal(evidence.frames.length, result.frames.length);
+  assert.doesNotThrow(() => validateEvidence(evidence));
+  assert.ok(
+    evidence.segments.length === 1,
+    "transcript still present alongside frames",
+  );
+});
+
+test("visual-only evidence (no transcript, ASR off) is accepted when frames carry OCR text; host must inspect to cite", async () => {
+  const work = path.join(jobs, "ocr-only");
+  const req = normalizeRequest({
+    schemaVersion: 1,
+    source: { kind: "local", value: media },
+    mode: "briefing",
+    outputLanguage: "ko",
+    formats: ["html"],
+    policy: { asr: "off", visual: "local-ocr" },
+  });
+  const result = await extractSource(req, {
+    workDir: work,
+    tesseractExecutable: tesseract,
+    ocrSampleSeconds: 2,
+  });
+  assert.equal(result.segments.length, 0);
+  assert.equal(result.extraction.method, "none");
+  assert.equal(result.extraction.provider, "video-summarizer/visual-ocr");
+  const evidence = makeEvidence(result);
+  assert.equal(evidence.chunks.length, 0);
+  const frame = evidence.frames[0];
+  const report = {
+    schemaVersion: 1,
+    evidenceRef: { id: evidence.id, sha256: "0".repeat(64) },
+    mode: "briefing",
+    outputLanguage: "ko",
+    title: "t",
+    summary: [
+      {
+        text: "화면 텍스트에 따르면 보관 온도는 20도 이하다.",
+        attribution: "source",
+        citations: [{ kind: "frame", id: frame.id }],
+      },
+    ],
+    sections: [
+      {
+        id: "s",
+        heading: "h",
+        blocks: [
+          {
+            type: "figure",
+            frameId: frame.id,
+            alt: "slide",
+            caption: {
+              text: "슬라이드",
+              attribution: "source",
+              citations: [{ kind: "frame", id: frame.id }],
+            },
+          },
+        ],
+      },
+    ],
+    caveats: [],
+  };
+  const analysis = {
+    schemaVersion: 1,
+    evidenceId: evidence.id,
+    reviewedChunkIds: [],
+    inspectedFrameIds: [frame.id],
+    status: "complete",
+    limitations: [],
+  };
+  assert.doesNotThrow(() =>
+    validateData({
+      request: req,
+      evidence,
+      analysis,
+      report,
+      evidenceSha256: "0".repeat(64),
+    }),
+  );
+  await assert.rejects(
+    async () =>
+      validateData({
+        request: req,
+        evidence,
+        analysis: { ...analysis, inspectedFrameIds: [] },
+        report,
+        evidenceSha256: "0".repeat(64),
+      }),
+    (e) => e.code === "UNCONFIRMED_FRAME",
+  );
+});
+
+test("OCR refuses missing executable, bad language lists and platform sources; nothing is installed", async () => {
+  await assert.rejects(
+    () =>
+      extractSource(request({ visual: "local-ocr" }), {
+        workDir: path.join(jobs, "no-exe"),
+      }),
+    (e) => e.code === "CAPABILITY_MISSING",
+  );
+  await assert.rejects(
+    () =>
+      extractSource(request({ visual: "local-ocr" }), {
+        workDir: path.join(jobs, "bad-lang"),
+        tesseractExecutable: tesseract,
+        ocrLanguages: "kor;rm -rf",
+      }),
+    (e) => e.code === "INVALID_CONTRACT",
+  );
+  const yt = normalizeRequest({
+    schemaVersion: 1,
+    source: {
+      kind: "url",
+      value: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+    },
+    mode: "briefing",
+    outputLanguage: "ko",
+    formats: ["html"],
+    transcriptFile: srt,
+    policy: { asr: "off", visual: "local-ocr" },
+  });
+  await assert.rejects(
+    () =>
+      extractSource(yt, {
+        workDir: path.join(jobs, "yt"),
+        tesseractExecutable: tesseract,
+      }),
+    (e) => e.code === "SOURCE_UNSUPPORTED",
+  );
+  assert.deepEqual(
+    jpegSize(
+      Buffer.from([
+        0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0xb4, 0x01, 0x40, 0x03,
+      ]),
+    ),
+    { height: 180, width: 320 },
+  );
+  assert.equal(jpegSize(Buffer.from("not a jpeg")), null);
+});
+
+test("caption track ranking follows youtube-transcript-api order: language priority, then manual before auto", () => {
+  const tracks = [
+    { languageCode: "en", automatic: true, label: "English (auto-generated)" },
+    { languageCode: "ko", automatic: false, label: "Korean" },
+    { languageCode: "en", automatic: false, label: "English" },
+    { languageCode: "ja", automatic: false, label: "Japanese" },
+  ];
+  assert.deepEqual(
+    rankCaptionTracks(tracks, ["en", "ko"]).map((t) => t.label),
+    ["English", "English (auto-generated)", "Korean", "Japanese"],
+  );
+  assert.deepEqual(
+    rankCaptionTracks(tracks, ["ko"]).map((t) => t.label),
+    ["Korean", "English", "Japanese", "English (auto-generated)"],
+  );
+  assert.deepEqual(
+    rankCaptionTracks(tracks, []).map((t) => t.label),
+    ["Korean", "English", "Japanese", "English (auto-generated)"],
+  );
+  assert.deepEqual(
+    rankCaptionTracks(
+      [
+        { languageCode: "en-US", automatic: false },
+        { languageCode: "en", automatic: true },
+      ],
+      ["en"],
+    ).map((t) => t.languageCode),
+    ["en-US", "en"],
+  );
+});
+
+test("playability mapping distinguishes bot check, age restriction, unavailable and unplayable with fixed causes", () => {
+  const code = (fn) => {
+    try {
+      fn();
+    } catch (e) {
+      return [e.code, e.detail];
+    }
+    return null;
+  };
+  assert.equal(
+    code(() => assertPlayability({ status: "OK" })),
+    null,
+  );
+  assert.equal(
+    code(() => assertPlayability(null)),
+    null,
+  );
+  assert.deepEqual(
+    code(() =>
+      assertPlayability({
+        status: "LOGIN_REQUIRED",
+        reason: "Sign in to confirm you’re not a bot",
+      }),
+    ),
+    ["SOURCE_ACCESS_DENIED", "bot-check"],
+  );
+  assert.deepEqual(
+    code(() =>
+      assertPlayability({
+        status: "LOGIN_REQUIRED",
+        reason: "This video may be inappropriate for some users.",
+      }),
+    ),
+    ["SOURCE_ACCESS_DENIED", "age-restricted"],
+  );
+  assert.deepEqual(
+    code(() =>
+      assertPlayability({
+        status: "ERROR",
+        reason: "This video is unavailable",
+      }),
+    ),
+    ["SOURCE_UNAVAILABLE", "video-unavailable"],
+  );
+  assert.deepEqual(
+    code(() =>
+      assertPlayability({
+        status: "UNPLAYABLE",
+        reason:
+          "The uploader has not made this video available in your country",
+      }),
+    ),
+    ["SOURCE_UNAVAILABLE", "video-unplayable"],
+  );
+  for (const key of [
+    "bot-check",
+    "age-restricted",
+    "video-unavailable",
+    "video-unplayable",
+    "no-transcript",
+    "transcript-refused",
+  ])
+    assert.ok(FAILURE_DETAILS[key]);
+});
+
+test("captures may declare their track; asr tracks add the automatic-captions warning, bad kinds are rejected", () => {
+  const req = {
+    source: {
+      kind: "url",
+      value: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+    },
+  };
+  const base = {
+    schemaVersion: 1,
+    videoId: "jNQXAC9IVRw",
+    sourceUrl: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+    capturedAt: "2026-01-01T00:00:00.000Z",
+    title: "t",
+    durationMs: 20000,
+    language: null,
+    method: "transcript-dom",
+    rows: [{ startLabel: "0:01", text: "hello" }],
+  };
+  const asr = parseYoutubeCapture(
+    JSON.stringify({
+      ...base,
+      trackName: "English (auto-generated)",
+      trackKind: "asr",
+    }),
+    req,
+  );
+  assert.ok(
+    asr.extraction.warnings.some((w) => w.code === "AUTOMATIC_CAPTIONS"),
+  );
+  const manual = parseYoutubeCapture(
+    JSON.stringify({ ...base, trackName: "English", trackKind: "manual" }),
+    req,
+  );
+  assert.ok(
+    !manual.extraction.warnings.some((w) => w.code === "AUTOMATIC_CAPTIONS"),
+  );
+  assert.ok(
+    !parseYoutubeCapture(JSON.stringify(base), req).extraction.warnings.some(
+      (w) => w.code === "AUTOMATIC_CAPTIONS",
+    ),
+    "older captures without track fields still import",
+  );
+  assert.throws(
+    () =>
+      parseYoutubeCapture(
+        JSON.stringify({ ...base, trackKind: "generated" }),
+        req,
+      ),
+    (e) => e.code === "INVALID_CONTRACT",
+  );
+});
+
+test("scene mode always keeps the first frame, defaults to psm 6 through IPC (null options), and rejects a bad psm", async () => {
+  const work = path.join(jobs, "scene");
+  const result = await extractSource(request({ visual: "local-ocr" }), {
+    workDir: work,
+    tesseractExecutable: tesseract,
+    ocrSceneThreshold: 0.05,
+  });
+  assert.equal(
+    result.frames[0]?.timestampMs,
+    0,
+    "first frame is sampled even though scene detection never selects frame 0",
+  );
+  assert.equal(result.raw.visualOcr.psm, 6);
+  assert.match(result.raw.visualOcr.selector, /eq\(n,0\)\+gt\(scene,0\.05\)/);
+  await assert.rejects(
+    () =>
+      extractSource(request({ visual: "local-ocr" }), {
+        workDir: path.join(jobs, "psm"),
+        tesseractExecutable: tesseract,
+        ocrPsm: 99,
+      }),
+    (e) => e.code === "INVALID_CONTRACT",
+  );
+});
+
+test("visual-only outputs carry frame notices, inspected-frame scope and anchors for inline frame citations (no transcript boilerplate)", async () => {
+  const { fixture } = await import("./helpers.mjs");
+  const { htmlDocument } = await import("../lib/rendering.mjs");
+  const { markdownDocument } = await import("../lib/markdown.mjs");
+  const f = await fixture({
+    mutate(d) {
+      d.evidence.segments = [];
+      d.evidence.chunks = [];
+      d.evidence.extraction.timing = "none";
+      d.evidence.extraction.method = "none";
+      d.evidence.frames = [
+        {
+          id: "frame-0001",
+          timestampMs: 1000,
+          assetPath: "assets/frame-0001.jpg",
+          sha256: "0".repeat(64),
+          width: 320,
+          height: 180,
+          ocrText: "규칙 1: 보관 온도 20도 이하",
+        },
+        {
+          id: "frame-0002",
+          timestampMs: 3000,
+          assetPath: "assets/frame-0002.jpg",
+          sha256: "0".repeat(64),
+          width: 320,
+          height: 180,
+          ocrText: "규칙 2",
+        },
+      ];
+      d.analysis.reviewedChunkIds = [];
+      d.analysis.inspectedFrameIds = ["frame-0001", "frame-0002"];
+      const cite = (id) => [{ kind: "frame", id }];
+      d.report.summary = [
+        {
+          text: "카드 1의 규칙.",
+          attribution: "source",
+          citations: cite("frame-0001"),
+        },
+      ];
+      d.report.sections = [
+        {
+          id: "s",
+          heading: "화면",
+          blocks: [
+            {
+              type: "figure",
+              frameId: "frame-0001",
+              alt: "카드 1",
+              caption: {
+                text: "카드 1",
+                attribution: "source",
+                citations: cite("frame-0001"),
+              },
+            },
+            {
+              type: "paragraph",
+              statement: {
+                text: "카드 2도 있다.",
+                attribution: "source",
+                citations: cite("frame-0002"),
+              },
+            },
+          ],
+        },
+      ];
+      d.report.caveats = [];
+    },
+  });
+  const html = htmlDocument(f.bundle);
+  assert.ok(
+    !html.includes("원본 전사가 포함됩니다"),
+    "no transcript privacy notice",
+  );
+  assert.ok(html.includes("원본 화면 이미지가 포함됩니다"));
+  assert.ok(
+    !html.includes("시간 정보가 없습니다"),
+    "no timing notice without a transcript",
+  );
+  assert.ok(html.includes("확인한 화면 2/2"));
+  assert.equal(
+    (html.match(/id="frame-frame-0002"/g) ?? []).length,
+    1,
+    "inline-cited frame gets exactly one anchor in the cited-frames section",
+  );
+  assert.equal(
+    (html.match(/id="frame-frame-0001"/g) ?? []).length,
+    1,
+    "figure frame is not duplicated",
+  );
+  assert.ok(markdownDocument(f.bundle).includes("확인한 화면: 2/2"));
+  await rm(f.root, { recursive: true, force: true });
+});
+
+test("vision engine: TSV parsing, bottom-region filtering, similarity dedupe and logo suppression", async () => {
+  const { parseVisionLines, inRegion, newLines } = await import(
+    "../lib/ingest-worker.mjs"
+  );
+  const lines = parseVisionLines(
+    "0.50\t0.18\t0.10\t0.64\t0.08\t'주 52시간 근로제' 속도 조절 법안 발의\n1.00\t0.90\t0.89\t0.05\t0.04\tKBS\nbad line\n\t0.1\t0.86\t0.2\t0.05\tblank confidence\n-0.5\t0.1\t0.86\t0.2\t0.05\tnegative\n1.5\t0.1\t0.86\t0.2\t0.05\tout of range\n0.5\t0.1\t0.86\t0.2\t0.05\t자료화면\n",
+  );
+  assert.equal(
+    lines.length,
+    3,
+    "blank, negative and out-of-range numeric fields are rejected",
+  );
+  assert.deepEqual(
+    lines.filter((l) => inRegion(l, "bottom")).map((l) => l.text),
+    ["'주 52시간 근로제' 속도 조절 법안 발의"],
+  );
+  assert.deepEqual(
+    lines.filter((l) => inRegion(l, "top")).map((l) => l.text),
+    ["KBS", "자료화면"],
+  );
+  const recent = [];
+  const f1 = newLines(["KBS NEWS", "첫 번째 자막입니다"], recent);
+  recent.push(...f1);
+  const f2 = newLines(["KBS NEWS", "첫 번째 자막입니다"], recent); // same subtitle still on screen + logo
+  const f3 = newLines(["KBS NEWS", "두 번째 자막"], recent);
+  assert.deepEqual(f1, ["KBS NEWS", "첫 번째 자막입니다"]);
+  assert.deepEqual(
+    f2,
+    [],
+    "unchanged subtitle and persistent logo are not re-reported",
+  );
+  assert.deepEqual(f3, ["두 번째 자막"], "only the new caption line surfaces");
+  // End-to-end with a mock vision helper emitting boxes: bottom region keeps the caption, drops the logo.
+  const work = path.join(jobs, "vision");
+  const helper = path.join(root, "vision-ocr");
+  await writeFile(
+    helper,
+    `#!${process.execPath}\nconst n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst caption = n===1 ? "첫 번째 자막입니다" : n===2 ? "첫 번째 자막입니다" : "두 번째 자막입니다";\nprocess.stdout.write("1.000\\t0.90\\t0.89\\t0.05\\t0.04\\tKBS\\n0.500\\t0.20\\t0.08\\t0.60\\t0.07\\t"+caption+"\\n");\n`,
+    { mode: 0o700 },
+  );
+  const result = await extractSource(request({ visual: "local-ocr" }), {
+    workDir: work,
+    ocrEngine: "vision",
+    ocrExecutable: helper,
+    ocrLanguages: "ko-KR,en-US",
+    ocrRegion: "bottom",
+    ocrSampleSeconds: 2,
+  });
+  assert.deepEqual(
+    result.frames.map((f) => f.ocrText),
+    ["첫 번째 자막입니다", "두 번째 자막입니다"],
+  );
+  assert.equal(result.raw.visualOcr.engine, "vision");
+  assert.equal(result.raw.visualOcr.region, "bottom");
+  await assert.rejects(
+    () =>
+      extractSource(request({ visual: "local-ocr" }), {
+        workDir: path.join(jobs, "vision-bad"),
+        ocrEngine: "vision",
+        ocrExecutable: helper,
+        ocrLanguages: "kor+eng",
+      }),
+    (e) => e.code === "INVALID_CONTRACT",
+    "tesseract-style language list is rejected for vision",
+  );
+  await assert.rejects(
+    () =>
+      extractSource(request({ visual: "local-ocr" }), {
+        workDir: path.join(jobs, "engine-bad"),
+        ocrEngine: "paddle",
+        ocrExecutable: helper,
+      }),
+    (e) => e.code === "INVALID_CONTRACT",
+  );
+});
+
+test("tesseract with --ocr-region crops the frame band through a valid ffmpeg filter", async () => {
+  const result = await extractSource(request({ visual: "local-ocr" }), {
+    workDir: path.join(jobs, "ocr-bottom"),
+    tesseractExecutable: tesseract,
+    ocrLanguages: "kor+eng",
+    ocrRegion: "bottom",
+    ocrSampleSeconds: 2,
+  });
+  assert.ok(result.frames.length >= 1);
+  assert.equal(result.frames[0].width, 320);
+  assert.equal(result.frames[0].height, 72, "bottom 40 % of a 180 px frame");
+  assert.equal(result.raw.visualOcr.region, "bottom");
+  await assert.rejects(
+    () =>
+      extractSource(request({ visual: "local-ocr" }), {
+        workDir: path.join(jobs, "ocr-region-bad"),
+        tesseractExecutable: tesseract,
+        ocrRegion: "left",
+      }),
+    (e) => e.code === "INVALID_CONTRACT",
+  );
+});
+
+test("dedupe is exact: any changed character inside a line is new evidence; only edge punctuation/whitespace jitter folds", async () => {
+  const { sameCaption, newLines, captionKey } = await import(
+    "../lib/ingest-worker.mjs"
+  );
+  // Round-1 and round-2 review counterexamples: none of these may be treated as repeats.
+  for (const [a, b] of [
+    [
+      "보관 온도는 20도 이하로 유지해야 합니다.",
+      "보관 온도는 80도 이하로 유지해야 합니다.",
+    ],
+    [
+      "This product is safe for pregnant patients.",
+      "This product is unsafe for pregnant patients.",
+    ],
+    ["승인 전에는 삭제합니다", "승인 전에는 삭제하지 않습니다"],
+    [
+      "The concentration must remain below 1.5 mg.",
+      "The concentration must remain below 15 mg.",
+    ],
+    ["Maintain the temperature at -20 C.", "Maintain the temperature at 20 C."],
+    ["The permitted pressure is 20 MPa.", "The permitted pressure is 20 mPa."],
+    [
+      "Set the administered dose to 20 mg.",
+      "Set the administered dose to 20 g.",
+    ],
+    [
+      "The dose is eight milligrams per day.",
+      "The dose is eighty milligrams per day.",
+    ],
+    ["이 문서는 검토 후 폐기합니다.", "이 문서는 검토 후 대기합니다."],
+    ["이 결과는 관리자만 승인합니다.", "이 결과는 관리자도 승인합니다."],
+    [
+      "This is not ready; there is no alarm active.",
+      "This is now ready; there is no alarm active.",
+    ],
+    [
+      "오류 발생 시에 작업을 진행하면 안됩니다.",
+      "오류 발생 시에 작업을 진행하면 됩니다.",
+    ],
+    ["Do not open the box", "Do now open the box"],
+    ["abcdefghijklmnop", "abcdefghijklmnoq"],
+    ["자료화면 제공: 연합뉴스", "자료화면 제공; 연합뉴스"],
+    // Round-3 review: edge/quote normalisation also lost evidence.
+    [".5 mg daily", "5 mg daily"],
+    ["The span is 5'", "The span is 5"],
+    ["Use 5·10 mL", "Use 5 10 mL"],
+    ["don't proceed", "dont proceed"],
+    ["첫 번째 자막입니다", "첫 번째 자막입니다."],
+    ["KBS NEWS 9", "KBS NEWS 9 |"],
+  ]) {
+    assert.equal(sameCaption(a, b), false, `${a} vs ${b}`);
+    assert.deepEqual(newLines([b], [a]), [b]);
+  }
+  // Only whitespace and Unicode normalisation form are cosmetic.
+  assert.equal(
+    sameCaption("  첫 번째   자막입니다 ", "첫 번째 자막입니다"),
+    true,
+  );
+  assert.equal(captionKey("  a   b  "), "a b");
+  assert.equal(captionKey("한글".normalize("NFD")), "한글", "NFC-normalised");
+  assert.deepEqual(
+    newLines(["NO", "20%", "x"], []),
+    ["NO", "20%"],
+    "two-character lines count; single characters are ignored",
+  );
+});
+
+test("duplicate-PTS scene source (round-2 fixture): one image per metadata record, every image bound to its own source time", async () => {
+  // 12 gray frames (values 0,255,32,200,80,160,8,240,100,180,0,255) at 2 fps with floor(N/3)
+  // PTS: four PTS values, three distinct images each. Built by the round-2 reviewer.
+  const fixture = path.join(root, "dup.mkv");
+  await copyFile(
+    new URL("./fixtures/scene-duplicates.mkv", import.meta.url),
+    fixture,
+  );
+  // Mock OCR returns a distinct line per frame so nothing is deduplicated.
+  const ocr = path.join(root, "ocr-unique");
+  await writeFile(
+    ocr,
+    `#!${process.execPath}\nconst n=/frame-(\\d+)/.exec(process.argv[2])?.[1];process.stdout.write("frame text number "+n+"\\n");\n`,
+    { mode: 0o700 },
+  );
+  const result = await extractSource(
+    normalizeRequest({
+      schemaVersion: 1,
+      source: { kind: "local", value: fixture },
+      mode: "briefing",
+      outputLanguage: "ko",
+      formats: ["html"],
+      transcriptFile: srt,
+      policy: { asr: "off", visual: "local-ocr" },
+    }),
+    {
+      workDir: path.join(jobs, "dup"),
+      tesseractExecutable: ocr,
+      ocrLanguages: "eng",
+      ocrSceneThreshold: 0.02,
+    },
+  );
+  assert.equal(
+    result.raw.visualOcr.sampled,
+    12,
+    "every selected frame is emitted (passthrough), none dropped",
+  );
+  assert.deepEqual(
+    result.frames.map((f) => f.timestampMs),
+    [0, 0, 0, 500, 500, 500, 1000, 1000, 1000, 1500, 1500, 1500],
+  );
+  // Image identity: alternating black/white frames must alternate in the stored JPEGs.
+  const { readFile: rf } = await import("node:fs/promises");
+  const lum = [];
+  for (const f of result.frames) {
+    const bytes = await rf(path.join(result.assetRoot, f.assetPath));
+    assert.equal(
+      bytes.length > 0 && bytes[0] === 0xff && bytes[1] === 0xd8,
+      true,
+    );
+    lum.push(bytes.length);
+  }
+  assert.ok(
+    new Set(lum).size >= 2,
+    "distinct images were stored, not one repeated frame",
+  );
+});
+
+test("interval sampling keeps real source timestamps, survives quote/colon work directories, and a caption returning after the window is reported again", async () => {
+  const work = path.join(jobs, "it's: odd");
+  // Mock vision: caption A on frames 1–2, nothing on 3–11, caption A again on frame 12.
+  const helper = path.join(root, "vision-window");
+  await writeFile(
+    helper,
+    `#!${process.execPath}\nconst n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst show = n<=2 || n>=12;\nif (show) process.stdout.write("0.900\\t0.20\\t0.08\\t0.60\\t0.07\\t반복 표시되는 자막입니다\\n");\n`,
+    { mode: 0o700 },
+  );
+  // 6-second clip at 1 s sampling yields frames at real PTS 0, 1, 2, ... (select, not fps resampling).
+  const result = await extractSource(request({ visual: "local-ocr" }), {
+    workDir: work,
+    ocrEngine: "vision",
+    ocrExecutable: helper,
+    ocrLanguages: "ko-KR",
+    ocrSampleSeconds: 1,
+  });
+  assert.equal(
+    result.raw.visualOcr.selector.startsWith("select="),
+    true,
+    "interval sampling selects source frames",
+  );
+  assert.equal(result.raw.visualOcr.sampled, 6);
+  assert.deepEqual(
+    result.frames.map((f) => f.timestampMs),
+    [0],
+    "a caption still displayed is reported once",
+  );
+  // The window is 10 s of source time: last seen at 1 s, back at 12 s → reported again.
+  const longMedia = path.join(root, "long.mp4");
+  await exec(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=gray:s=320x180:d=14",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-y",
+      longMedia,
+    ],
+    { env: isolatedEnvironment(root), timeout: 30000, shell: false },
+  );
+  const longResult = await extractSource(
+    normalizeRequest({
+      schemaVersion: 1,
+      source: { kind: "local", value: longMedia },
+      mode: "briefing",
+      outputLanguage: "ko",
+      formats: ["html"],
+      transcriptFile: srt,
+      policy: { asr: "off", visual: "local-ocr" },
+    }),
+    {
+      workDir: path.join(jobs, "window"),
+      ocrEngine: "vision",
+      ocrExecutable: helper,
+      ocrLanguages: "ko-KR",
+      ocrSampleSeconds: 1,
+    },
+  );
+  assert.equal(longResult.raw.visualOcr.sampled, 14);
+  assert.deepEqual(
+    longResult.frames.map((f) => Math.round(f.timestampMs / 1000)),
+    [0, 11],
+    "first appearance and the return after the 8-frame window",
+  );
+});

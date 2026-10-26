@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://video-summarizer.invalid/notes",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "evidenceRef": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "required": ["id", "sha256"],
+      "additionalProperties": false
+    },
+    "chunkId": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$" },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 80,
+      "items": { "$ref": "#/definitions/statement" }
+    },
+    "quotes": {
+      "type": "array",
+      "maxItems": 40,
+      "items": { "$ref": "#/definitions/statement" }
+    },
+    "openQuestions": {
+      "type": "array",
+      "maxItems": 40,
+      "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+    }
+  },
+  "required": ["schemaVersion", "evidenceRef", "chunkId", "summary", "claims", "quotes", "openQuestions"],
+  "additionalProperties": false,
+  "definitions": {
+    "statement": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "attribution": { "enum": ["source", "interpretation"] },
+        "citations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": { "const": "segment" },
+              "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$" }
+            },
+            "required": ["kind", "id"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["text", "attribution", "citations"],
+      "additionalProperties": false
+    }
+  }
+}

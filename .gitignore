@@ -1,0 +1,8 @@
+node_modules/
+.pi/
+.ruff_cache/
+.video-summarizer/
+artifacts/
+coverage/
+*.tgz
+.DS_Store
