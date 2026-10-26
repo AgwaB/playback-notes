@@ -58,7 +58,8 @@ Only the source, mode and language are mandatory beyond `schemaVersion`:
     "asrTimeoutMs": 3600000,
     "transcriptLanguages": [],
     "visual": "off",
-    "youtubeTokens": "auto"
+    "youtubeTokens": "auto",
+    "publishTranscript": true
   }
 }
 ```
@@ -78,7 +79,9 @@ If local ASR was approved and supported for the source, set `policy.asr` to `loc
 
 For explicitly approved host-browser YouTube capture, pass `--youtube-capture /absolute/private/capture.json`; see the [capture contract and acquisition rules](youtube-browser-capture.md). It cannot be combined with `transcriptFile`. DOM imports create partial evidence and require the existing snapshot-bound approval. This import option does not launch a browser.
 
-`policy.visual` is `off`, `frames` or `local-ocr`. `frames` samples key-scene candidates without any OCR tool: every 20 s plus hard cuts (ffmpeg scene score > 0.3) by default, `--ocr-sample-seconds`/`--ocr-scene-threshold` override, cap `--ocr-max-frames` (default 60, max 600). Every sampled frame is kept (no text to de-duplicate on) and `assets/contact-sheet.jpg` (4 per row, evidence order; not itself evidence) is written beside them for review; evidence carries `FRAMES_SAMPLED`. For a YouTube source either visual mode needs `--yt-dlp-executable`: a ≤480p video-only HTTPS track (H.264 preferred) is streamed through the same metered pipe as audio (`PLATFORM_MEDIA_DOWNLOADED`), never a muxed or fragmented format.
+`publishTranscript` (default `true`) puts the full transcript in the HTML source panel; with `false` the panel keeps only one timestamp per segment so citations still seek and highlight, and the privacy notice says the transcript is not included. It is part of the revision identity (changing it needs a new output directory). Markdown and PDF never contain the transcript.
+
+`policy.visual` is `off`, `frames` or `local-ocr`. `frames` samples key-scene candidates without any OCR tool: every 20 s plus hard cuts (ffmpeg scene score > 0.3) by default, `--ocr-sample-seconds`/`--ocr-scene-threshold` override, cap `--ocr-max-frames` (default 60, max 600). Every sampled frame is kept (no text to de-duplicate on) and `assets/contact-sheet.jpg` (4 per row, evidence order; not itself evidence) is written beside them for review; evidence carries `FRAMES_SAMPLED`. For a YouTube source either visual mode needs `--yt-dlp-executable`: a ≤480p video-only HTTPS track (H.264 preferred) is streamed through the same metered pipe as audio (`PLATFORM_VIDEO_DOWNLOADED`; audio for ASR is `PLATFORM_MEDIA_DOWNLOADED`), never a muxed or fragmented format.
 
 If the user approved local OCR of on-screen text, set `policy.visual` to `local-ocr` and pass `--tesseract-executable /absolute/tesseract` plus `--ocr-languages kor+eng` (tesseract language codes, `+`-joined). Frames are sampled at scene changes (`--ocr-scene-threshold`, default 0.1; use 0.05 for flat text cards, which score only ~0.05–0.12) or at a fixed interval (`--ocr-sample-seconds N`, the robust choice for long or live-action video), capped by `--ocr-max-frames` (default 60, max 600); the first frame is always included and every sampled frame keeps its real source timestamp (frames are selected, never resampled). `--ocr-psm` sets tesseract's page segmentation mode (default 6, one text block, which reads centred caption cards far better than the automatic layout mode 3).
 
@@ -98,13 +101,22 @@ For long sources, between prepare and authoring, validate per-chunk notes and bu
 node "$SKILL/scripts/notes.mjs" --evidence "$JOB/evidence.json" --notes-dir "$JOB/notes" --work-dir "$JOB" --analysis "$JOB/analysis-ledger.json" --update-ledger
 ```
 
+Before authoring, write the skeleton (bound to the exact evidence bytes; prints the block shapes and citable IDs; refuses to overwrite an existing report without `--force`):
+
+```bash
+node "$SKILL/scripts/scaffold.mjs" --request "$JOB/request.json" --evidence "$JOB/evidence.json" --work-dir "$JOB"
+```
+
 After the host reads chunks (or validated notes), writes the ledger and authors `report.json`:
 
 ```bash
 node "$SKILL/scripts/validate.mjs" --request "$JOB/request.json" --evidence "$JOB/evidence.json" --analysis "$JOB/analysis-ledger.json" --report "$JOB/report.json" --work-dir "$JOB"
 node "$SKILL/scripts/render.mjs" --request "$JOB/request.json" --evidence "$JOB/evidence.json" --analysis "$JOB/analysis-ledger.json" --report "$JOB/report.json" --work-dir "$JOB" --out-dir "$OUT"
 node "$SKILL/scripts/export.mjs" --request "$JOB/request.json" --evidence "$JOB/evidence.json" --analysis "$JOB/analysis-ledger.json" --report "$JOB/report.json" --work-dir "$JOB" --out-dir "$OUT" --browser-executable "$BROWSER"
+node "$SKILL/scripts/verify-output.mjs" --out-dir "$OUT"
 ```
+
+`verify-output.mjs` checks that the manifest's renderer identity (SHA-256 over the skill's `lib`, `templates`, `schemas`, `scripts` and `package.json`) equals the installed skill's and that every listed file still matches its hash; `RENDERER_MISMATCH` means a modified or copied renderer (or another skill version) produced the revision. It is tamper-evident, not tamper-proof.
 
 Pass every flag and value as separate shell words. Do not collect them in one variable and expand it unquoted: zsh does not word-split `$ARGS` (use a shell array, `"${args[@]}"`, or repeat the flags), and the CLI then reports the whole string as one unknown option.
 

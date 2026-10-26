@@ -23,7 +23,7 @@ Use [the report schema](../schemas/report.schema.json) and [the evidence schema]
 }
 ```
 
-Replace placeholder IDs/hash with actual evidence values. IDs are stable identifiers, not display headings. Use the requested output language; non-Korean interface labels currently fall back to English while report text remains in the requested language.
+Start from `scripts/scaffold.mjs --request "$JOB/request.json" --evidence "$JOB/evidence.json" --work-dir "$JOB"`: it writes this skeleton with the real `evidenceRef` (id and SHA-256 of the exact evidence bytes), mode and language, and prints the block shapes and the IDs you may cite. Do not recompute the hash yourself. Otherwise replace placeholder IDs/hash with actual evidence values. IDs are stable identifiers, not display headings. Use the requested output language; non-Korean interface labels currently fall back to English while report text remains in the requested language.
 
 ## Statement and citation
 
@@ -45,7 +45,14 @@ Replace placeholder IDs/hash with actual evidence values. IDs are stable identif
 | `figure` | `frameId`, `alt`, `caption` (statement) | Existing verified image asset, actually inspected by the host |
 | `diagram` | `kind` (`stack`/`flow`), `id`, `title`, `alt`, `nodes`, `edges`, `caption` (statement) | Host-structured schematic drawn by the fixed renderer; never host SVG |
 
-For a figure, `caption.citations` must cite the same frame and `analysis.inspectedFrameIds` must include it. Only bounded PNG/JPEG assets under `assets/` are supported. Frames come only from approved local OCR sampling or supplied assets; do not fabricate frame records to add decorative imagery. On-screen text read from a frame is quoted with `verbatim: false` (verbatim matching applies to transcript segments only) and the wording you report is what you confirmed in the image; if OCR misread a card, use the image-confirmed text in the report and leave the evidence file untouched.
+A figure, for a frame you opened and confirmed:
+
+```json
+{ "type": "figure", "frameId": "frame-0022", "alt": "What the image shows, for screen readers.",
+  "caption": { "text": "What this frame shows that the text relies on.", "attribution": "source", "citations": [{ "kind": "frame", "id": "frame-0022" }] } }
+```
+
+For a figure, `caption.citations` must cite the same frame and `analysis.inspectedFrameIds` must include it. Only bounded PNG/JPEG assets under `assets/` are supported. Frames come only from approved frame sampling (`policy.visual: frames` or `local-ocr`); do not fabricate frame records to add decorative imagery. On-screen text read from a frame is quoted with `verbatim: false` (verbatim matching applies to transcript segments only) and the wording you report is what you confirmed in the image; if OCR misread a card, use the image-confirmed text in the report and leave the evidence file untouched.
 
 ### Diagram block
 

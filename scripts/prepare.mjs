@@ -130,14 +130,16 @@ export async function prepare(options) {
         throw new Error("Frame changed during extraction.");
       await atomicWrite(workDir, frame.assetPath, frameBytes);
     }
-    // The contact sheet is a review index for the host (not evidence); it travels with the frames.
-    const sheet = extracted.raw?.visualOcr?.contactSheet?.path;
+    // The contact sheet and its index are review aids for the host (not evidence); they
+    // travel with the frames.
+    const sheet = extracted.raw?.visualOcr?.contactSheet;
     if (sheet && extracted.assetRoot)
-      await atomicWrite(
-        workDir,
-        sheet,
-        await readFile(path.join(extracted.assetRoot, sheet)),
-      );
+      for (const file of [sheet.path, sheet.index])
+        await atomicWrite(
+          workDir,
+          file,
+          await readFile(path.join(extracted.assetRoot, file)),
+        );
     await atomicWrite(workDir, "raw/extraction.json", jsonBytes(extracted.raw));
     const bytes = jsonBytes(evidence),
       evidenceSha256 = sha256(bytes);

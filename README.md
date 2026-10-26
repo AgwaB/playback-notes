@@ -11,7 +11,7 @@
 ## 시작
 
 1. Node.js **24+**를 준비하고 이 디렉터리에서 `npm ci`를 실행합니다.
-2. 호스트의 스킬 디렉터리에 이 패키지를 설치하거나 [SKILL.md](SKILL.md)를 호스트에게 로드하게 합니다. `SKILL.md`만 따로 복사하지 말고 `references/`, `scripts/`, `lib/`, `schemas/`, `templates/`와 의존성을 함께 유지합니다.
+2. `node scripts/install.mjs --link ~/.claude/skills/video-summarizer,~/.codex/skills/video-summarizer`로 읽기 전용 사본(`~/.agents/skills/video-summarizer`)을 설치하고 호스트 스킬 디렉터리를 연결합니다. 개발 트리를 직접 심링크하면 넓은 권한의 호스트가 작업 중 스킬을 고칠 수 있어 권장하지 않습니다. 또는 [SKILL.md](SKILL.md)를 호스트에게 로드하게 합니다. `SKILL.md`만 따로 복사하지 말고 `references/`, `scripts/`, `lib/`, `schemas/`, `templates/`와 의존성을 함께 유지합니다.
 3. “이 영상 브리핑해줘”, “이 로컬 파일을 딥다이브로 정리해줘”처럼 요청합니다. 빠진 소스/모드만 물어봅니다.
 4. PDF에는 설치된 Chrome/Chromium 실행 파일이 필요합니다. 로컬 미디어 처리에는 ffmpeg/ffprobe가 필요할 수 있습니다. 도구·모델·브라우저는 자동 설치하지 않습니다.
 

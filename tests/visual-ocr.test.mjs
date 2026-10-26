@@ -854,9 +854,13 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
   );
   assert.deepEqual(result.raw.visualOcr.contactSheet, {
     path: "assets/contact-sheet.jpg",
+    index: "assets/contact-sheet.txt",
     columns: 3,
     rows: 1,
   });
+  const index = await (await import("node:fs/promises")).readFile(path.join(result.assetRoot, "assets", "contact-sheet.txt"), "utf8");
+  assert.match(index, /^r1c1\s+frame-0001\s+00:00\s+assets\/frame-0001\.jpg$/m);
+  assert.match(index, /^r1c3\s+frame-0003\s+00:04\s+assets\/frame-0003\.jpg$/m);
   const { readFile: rf } = await import("node:fs/promises");
   const sheet = await rf(
     path.join(result.assetRoot, "assets", "contact-sheet.jpg"),
@@ -929,7 +933,7 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
   );
   assert.ok(
     ytResult.extraction.warnings.some(
-      (w) => w.code === "PLATFORM_MEDIA_DOWNLOADED",
+      (w) => w.code === "PLATFORM_VIDEO_DOWNLOADED",
     ),
   );
   assert.equal(
