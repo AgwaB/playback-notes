@@ -1,5 +1,6 @@
 {
   "name": "video-summarizer-skill",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Host-agent video evidence to grounded HTML, Markdown and PDF",
