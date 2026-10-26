@@ -185,6 +185,12 @@ export async function prepare(options) {
       await artifact(workDir, "analysis-ledger.json", "analysis"),
       await artifact(workDir, "manifest.json", "manifest"),
     ];
+    // Review aids for key-scene selection are listed so the host sees them in the envelope.
+    if (sheet && extracted.assetRoot)
+      artifacts.push(
+        await artifact(workDir, sheet.path, "contact-sheet"),
+        await artifact(workDir, sheet.index, "contact-sheet-index"),
+      );
     return result(
       "prepare",
       artifacts,
