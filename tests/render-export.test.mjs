@@ -109,7 +109,7 @@ test("output cannot serve the private work root or follow a symlink", async (t) 
   await assert.rejects(render({ ...f.args, "out-dir": f.work }), {
     code: "UNSAFE_PATH",
   });
-  await symlink(f.work, path.join(f.out, "escape"));
+  await symlink(f.work, path.join(f.out, "escape"), process.platform === "win32" ? "junction" : "dir");
   await assert.rejects(
     render({ ...f.args, "out-dir": path.join(f.out, "escape") }),
     { code: "UNSAFE_PATH" },

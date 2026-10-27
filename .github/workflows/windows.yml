@@ -1,0 +1,43 @@
+name: Windows
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [24, 26]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install test media and PDF tools
+        shell: pwsh
+        run: |
+          choco install ffmpeg --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw 'ffmpeg installation failed' }
+          $archive = Join-Path $env:RUNNER_TEMP 'poppler.zip'
+          Invoke-WebRequest 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne '7a6f256a0ddf7536182246a5733331bf4677cbcc34f4663774947ad34556c8d0') { throw 'Poppler checksum mismatch' }
+          Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $env:RUNNER_TEMP 'poppler')
+          Join-Path $env:RUNNER_TEMP 'poppler/poppler-26.09.0/Library/bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "TEST_BROWSER_EXECUTABLE=$env:ProgramFiles\Google\Chrome\Application\chrome.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - run: npm ci --no-audit --no-fund
+      - name: Exercise CRLF checkout
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:GITHUB_WORKSPACE 'templates/player.js'
+          $text = [IO.File]::ReadAllText($file) -replace '\r\n?', "`n"
+          [IO.File]::WriteAllText($file, ($text -replace '\n', "`r`n"), [Text.UTF8Encoding]::new($false))
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:browser

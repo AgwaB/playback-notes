@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fakeTool } from "./fake-tool.mjs";
 import { classifyCanary, canary } from "../scripts/canary.mjs";
 
 const err = (code, detail) =>
@@ -43,6 +45,29 @@ test("canary classification separates platform gates from broken adapters and ca
   );
 });
 
+test("fake tool executables preserve exact arguments, binary stdio and exit status", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "fake 한글 ' tool "));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const executable = await fakeTool(
+    path.join(root, "가짜 ' executable"),
+    'process.stdin.pipe(process.stdout); process.stdin.on("end", () => { process.stderr.write(JSON.stringify(process.argv.slice(2))); process.exitCode = 37; });',
+  );
+  const args = ["", "space value", "한글", 'a"b', "\\", "end\\", 'a\\"b', "&|<>^%!\t\n"];
+  const input = Buffer.from([0, 1, 2, 10, 13, 255]);
+  const child = spawn(executable, args, { shell: false, windowsHide: true });
+  const stdout = [], stderr = [];
+  child.stdout.on("data", (chunk) => stdout.push(chunk));
+  child.stderr.on("data", (chunk) => stderr.push(chunk));
+  const finished = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  child.stdin.end(input);
+  assert.equal(await finished, 37);
+  assert.deepEqual(Buffer.concat(stdout), input);
+  assert.deepEqual(JSON.parse(Buffer.concat(stderr).toString("utf8")), args);
+});
+
 test("canary refuses local sources and probes yt-dlp with --simulate and the same bounded flags", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "canary-"));
   try {
@@ -61,11 +86,9 @@ test("canary refuses local sources and probes yt-dlp with --simulate and the sam
       (e) => e.code === "INVALID_CONTRACT",
     );
     const log = path.join(root, "args.json");
-    const fake = path.join(root, "yt-dlp");
-    await writeFile(
-      fake,
-      `#!${process.execPath}\nimport { writeFileSync } from "node:fs";\nconst a = process.argv.slice(2);\nif (a[0] === "--version") { process.stdout.write("2099.01.01\\n"); process.exit(0); }\nwriteFileSync(${JSON.stringify(log)}, JSON.stringify(a));\n`,
-      { mode: 0o700 },
+    const fake = await fakeTool(
+      path.join(root, "yt-dlp"),
+      `import { writeFileSync } from "node:fs";\nconst a = process.argv.slice(2);\nif (a[0] === "--version") { process.stdout.write("2099.01.01\\n"); process.exit(0); }\nwriteFileSync(${JSON.stringify(log)}, JSON.stringify(a));\n`,
     );
     // Use an unroutable private source so the caption probe fails fast and deterministically.
     const req = path.join(root, "req.json");

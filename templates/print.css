@@ -49,6 +49,15 @@
     orphans: 3;
     widows: 3;
   }
+  section > p:has(> .citations) {
+    break-inside: avoid;
+  }
+  .citations {
+    display: inline;
+  }
+  .citations a + a {
+    margin-left: 0.4rem;
+  }
   a {
     color: #7c2920;
   }
@@ -80,6 +89,56 @@
   img {
     max-height: 180mm;
     object-fit: contain;
+  }
+  .cited-frames {
+    display: block;
+    break-after: avoid;
+  }
+  .cited-frames figure {
+    display: inline-block;
+    vertical-align: top;
+    width: calc(50% - 2mm);
+    margin: 0 2mm 4mm 0;
+  }
+  .diagram-wrap svg {
+    width: 100%;
+    max-width: 640px;
+  }
+  .source-notes {
+    break-inside: avoid;
+    break-before: avoid;
+  }
+  .limitations:has(+ .source-notes),
+  .limitations:has(+ .source-notes) > ul,
+  .limitations:has(+ .source-notes) > p:last-child {
+    break-after: avoid;
+  }
+  .limitations:has(+ .source-notes) > ul > li:last-child {
+    break-inside: avoid;
+  }
+  .limitations:has(+ .source-notes) > ul > li:nth-last-child(2) {
+    break-inside: avoid;
+    break-after: avoid;
+  }
+  .source-notes .references {
+    margin-bottom: 0;
+    padding-bottom: 2mm;
+  }
+  footer p {
+    margin-bottom: 2mm;
+  }
+  .source-notes .references h2,
+  .source-notes .references p,
+  footer > p:first-child,
+  footer summary {
+    display: inline;
+  }
+  .source-notes .references h2,
+  footer > p:first-child {
+    margin-right: 0.4rem;
+  }
+  footer details {
+    display: contents;
   }
   figcaption {
     break-before: avoid;

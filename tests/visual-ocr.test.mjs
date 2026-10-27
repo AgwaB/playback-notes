@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fakeTool } from "./fake-tool.mjs";
 import { extractSource, FAILURE_DETAILS } from "../lib/ingest.mjs";
 import { makeEvidence } from "../lib/evidence.mjs";
 import {
@@ -67,11 +68,9 @@ before(async () => {
     "1\n00:00:00,500 --> 00:00:01,500\n첫 번째 슬라이드 설명입니다.\n",
   );
   // Mock tesseract: emits deterministic text per frame; repeats the second frame's text to exercise dedupe.
-  tesseract = path.join(root, "tesseract");
-  await writeFile(
-    tesseract,
-    `#!${process.execPath}\nconst f=process.argv[2];const n=Number(/frame-(\\d+)/.exec(f)?.[1]??0);const texts={1:"보관 온도는 20도 이하 <script>x</script>",2:"보관 온도는 20도 이하 <script>x</script>",3:"a"};process.stdout.write(texts[n]??("frame text number "+n));\n`,
-    { mode: 0o700 },
+  tesseract = await fakeTool(
+    path.join(root, "tesseract"),
+    `const f=process.argv[2];const n=Number(/frame-(\\d+)/.exec(f)?.[1]??0);const texts={1:"보관 온도는 20도 이하 <script>x</script>",2:"보관 온도는 20도 이하 <script>x</script>",3:"a"};process.stdout.write(texts[n]??("frame text number "+n));\n`,
   );
 });
 after(async () => {
@@ -568,11 +567,9 @@ test("vision engine: TSV parsing, bottom-region filtering, similarity dedupe and
   assert.deepEqual(f3, ["두 번째 자막"], "only the new caption line surfaces");
   // End-to-end with a mock vision helper emitting boxes: bottom region keeps the caption, drops the logo.
   const work = path.join(jobs, "vision");
-  const helper = path.join(root, "vision-ocr");
-  await writeFile(
-    helper,
-    `#!${process.execPath}\nconst n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst caption = n===1 ? "첫 번째 자막입니다" : n===2 ? "첫 번째 자막입니다" : "두 번째 자막입니다";\nprocess.stdout.write("1.000\\t0.90\\t0.89\\t0.05\\t0.04\\tKBS\\n0.500\\t0.20\\t0.08\\t0.60\\t0.07\\t"+caption+"\\n");\n`,
-    { mode: 0o700 },
+  const helper = await fakeTool(
+    path.join(root, "vision-ocr"),
+    `const n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst caption = n===1 ? "첫 번째 자막입니다" : n===2 ? "첫 번째 자막입니다" : "두 번째 자막입니다";\nprocess.stdout.write("1.000\\t0.90\\t0.89\\t0.05\\t0.04\\tKBS\\n0.500\\t0.20\\t0.08\\t0.60\\t0.07\\t"+caption+"\\n");\n`,
   );
   const result = await extractSource(request({ visual: "local-ocr" }), {
     workDir: work,
@@ -709,11 +706,9 @@ test("duplicate-PTS scene source (round-2 fixture): one image per metadata recor
     fixture,
   );
   // Mock OCR returns a distinct line per frame so nothing is deduplicated.
-  const ocr = path.join(root, "ocr-unique");
-  await writeFile(
-    ocr,
-    `#!${process.execPath}\nconst n=/frame-(\\d+)/.exec(process.argv[2])?.[1];process.stdout.write("frame text number "+n+"\\n");\n`,
-    { mode: 0o700 },
+  const ocr = await fakeTool(
+    path.join(root, "ocr-unique"),
+    `const n=/frame-(\\d+)/.exec(process.argv[2])?.[1];process.stdout.write("frame text number "+n+"\\n");\n`,
   );
   const result = await extractSource(
     normalizeRequest({
@@ -758,14 +753,12 @@ test("duplicate-PTS scene source (round-2 fixture): one image per metadata recor
   );
 });
 
-test("interval sampling keeps real source timestamps, survives quote/colon work directories, and a caption returning after the window is reported again", async () => {
-  const work = path.join(jobs, "it's: odd");
+test("interval sampling keeps real source timestamps, survives quoted and Unicode work directories, and a caption returning after the window is reported again", async () => {
+  const work = path.join(jobs, process.platform === "win32" ? "it's 한글 odd" : "it's: 한글 odd");
   // Mock vision: caption A on frames 1–2, nothing on 3–11, caption A again on frame 12.
-  const helper = path.join(root, "vision-window");
-  await writeFile(
-    helper,
-    `#!${process.execPath}\nconst n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst show = n<=2 || n>=12;\nif (show) process.stdout.write("0.900\\t0.20\\t0.08\\t0.60\\t0.07\\t반복 표시되는 자막입니다\\n");\n`,
-    { mode: 0o700 },
+  const helper = await fakeTool(
+    path.join(root, "vision-window"),
+    `const n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst show = n<=2 || n>=12;\nif (show) process.stdout.write("0.900\\t0.20\\t0.08\\t0.60\\t0.07\\t반복 표시되는 자막입니다\\n");\n`,
   );
   // 6-second clip at 1 s sampling yields frames at real PTS 0, 1, 2, ... (select, not fps resampling).
   const result = await extractSource(request({ visual: "local-ocr" }), {
@@ -884,19 +877,14 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
   assert.ok(
     result.extraction.warnings.some((w) => w.code === "FRAMES_SAMPLED"),
   );
-  // Default frames-mode selector: 20 s interval + hard cuts.
+  // A short source uses its candidate budget for dense intervals plus hard cuts.
   const defaults = await extractSource(request({ visual: "frames" }), {
     workDir: path.join(jobs, "frames-default"),
   });
-  assert.ok(
-    defaults.raw.visualOcr.selector.includes(
-      "gte(t-prev_selected_t,20)+gt(scene,0.3)",
-    ),
-  );
   assert.deepEqual(
     defaults.frames.map((f) => f.timestampMs),
-    [0, 4000],
-    "the hard cut (ffmpeg scene score 0.4) is caught below the interval; the flat red→green transition scores ~0 and is not a cut",
+    [0, 1000, 2000, 3000, 4000, 5000],
+    "interval candidates retain each short colour scene even when its transition scores below the hard-cut threshold",
   );
   // YouTube: without yt-dlp it is a capability error; with a fake yt-dlp streaming the local clip it samples frames.
   const yt = normalizeRequest({
@@ -915,12 +903,10 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
     () => extractSource(yt, { workDir: path.join(jobs, "frames-yt-missing") }),
     (e) => e.code === "CAPABILITY_MISSING",
   );
-  const fake = path.join(root, "yt-dlp-video");
   const log = path.join(root, "yt-dlp-video-args.json");
-  await writeFile(
-    fake,
-    `#!${process.execPath}\nimport { writeFileSync, readFileSync } from "node:fs";\nconst a = process.argv.slice(2);\nwriteFileSync(${JSON.stringify(log)}, JSON.stringify(a));\nprocess.stdout.write(readFileSync(${JSON.stringify(media)}));\n`,
-    { mode: 0o700 },
+  const fake = await fakeTool(
+    path.join(root, "yt-dlp-video"),
+    `import { writeFileSync, readFileSync } from "node:fs";\nconst a = process.argv.slice(2);\nwriteFileSync(${JSON.stringify(log)}, JSON.stringify(a));\nprocess.stdout.write(readFileSync(${JSON.stringify(media)}));\n`,
   );
   const ytResult = await extractSource(yt, {
     workDir: path.join(jobs, "frames-yt"),
@@ -1199,11 +1185,9 @@ test("round 5: a YouTube 'video' download that also carries audio, or is above 4
     ],
     { env: isolatedEnvironment(root), timeout: 30000, shell: false },
   );
-  const fake = path.join(root, "yt-dlp-muxed");
-  await writeFile(
-    fake,
-    `#!${process.execPath}\nimport { readFileSync } from "node:fs";\nprocess.stdout.write(readFileSync(${JSON.stringify(muxed)}));\n`,
-    { mode: 0o700 },
+  const fake = await fakeTool(
+    path.join(root, "yt-dlp-muxed"),
+    `import { readFileSync } from "node:fs";\nprocess.stdout.write(readFileSync(${JSON.stringify(muxed)}));\n`,
   );
   const yt = normalizeRequest({
     schemaVersion: 1,

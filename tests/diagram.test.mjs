@@ -264,7 +264,15 @@ test("long labels wrap/ellipsize inside boxes, row-skipping edges use the side l
     { from: "e", to: "g", label: "SKIP" },
   );
   const svg = diagramSvg(block);
-  assert.match(svg, /viewBox="0 0 668 \d+"/, "lane widens the canvas");
+  const canvasWidth = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)[1]);
+  const [, labelX, labelWidth] = /<rect x="([\d.]+)" y="[^"]+" width="([\d.]+)" height="18" fill="[^"]+"\/><text[^>]*>SKIP<\/text>/.exec(svg);
+  assert.ok(
+    Number(labelX) + Number(labelWidth) < canvasWidth,
+    "side-lane label background fits inside its canvas",
+  );
+  const unlabeled = structuredClone(block);
+  unlabeled.edges.at(-1).label = null;
+  assert.match(diagramSvg(unlabeled), /viewBox="0 0 668 \d+"/, "unlabeled lane keeps its existing width");
   const paths = [...svg.matchAll(/<path d="([^"]+)" fill="none"/g)].map(
     (m) => m[1],
   );

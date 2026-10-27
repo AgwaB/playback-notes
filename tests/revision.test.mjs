@@ -6,6 +6,8 @@ import { fixture } from "./helpers.mjs";
 import { render } from "../scripts/render.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import fsp from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 const execute = promisify(execFile);
 async function injectedExport(f, body) {
   const { stdout } = await execute(
@@ -28,6 +30,15 @@ async function injectedExport(f, body) {
     { cwd: process.cwd(), timeout: 30000, maxBuffer: 1024 * 1024 },
   );
   assert.match(stdout, /injected assertions passed/);
+}
+function denyCleanup(t, directory) {
+  const remove = fsp.rm;
+  const mocked = t.mock.method(fsp, "rm", (file, options) => {
+    if (file === directory) throw Object.assign(new Error("injected cleanup denial"), { code: "EACCES" });
+    return remove(file, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { mocked.mock.restore(); syncBuiltinESMExports(); });
 }
 import { exportReport } from "../scripts/export.mjs";
 import { startServer } from "../lib/server.mjs";
@@ -402,19 +413,15 @@ test("round 5: when cleanup of a failed fresh revision partly fails, the origina
   const { outputTransaction } = await import("../lib/output.mjs");
   const { loadBundle } = await import("../lib/validation.mjs");
   const { AppError } = await import("../lib/io.mjs");
-  const { chmod } = await import("node:fs/promises");
   const f = await fixture();
-  t.after(async () => {
-    await chmod(path.join(f.out, "stuck"), 0o755).catch(() => {});
-    await rm(f.root, { recursive: true, force: true });
-  });
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  denyCleanup(t, path.join(f.out, "stuck"));
   const bundle = await loadBundle(f.args);
   await assert.rejects(
     outputTransaction(bundle, f.args, async (context) => {
       await mkdir(path.join(context.out, "stuck"));
       await writeFile(path.join(context.out, "stuck", "a.jpg"), "x");
       await writeFile(path.join(context.out, "removable.txt"), "x");
-      await chmod(path.join(context.out, "stuck"), 0o555);
       throw new AppError("EXPORT_FAILED", "Injected failure.");
     }),
     (e) =>
@@ -432,18 +439,14 @@ test("round 5: when cleanup of a failed fresh revision partly fails, the origina
 test("round 6: a plain filesystem error (ENOSPC) also carries the leftover note, separately from its own message", async (t) => {
   const { outputTransaction } = await import("../lib/output.mjs");
   const { loadBundle } = await import("../lib/validation.mjs");
-  const { chmod } = await import("node:fs/promises");
   const f = await fixture();
-  t.after(async () => {
-    await chmod(path.join(f.out, "stuck"), 0o755).catch(() => {});
-    await rm(f.root, { recursive: true, force: true });
-  });
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  denyCleanup(t, path.join(f.out, "stuck"));
   const bundle = await loadBundle(f.args);
   await assert.rejects(
     outputTransaction(bundle, f.args, async (context) => {
       await mkdir(path.join(context.out, "stuck"));
       await writeFile(path.join(context.out, "stuck", "a.jpg"), "x");
-      await chmod(path.join(context.out, "stuck"), 0o555);
       throw Object.assign(new Error("ENOSPC: no space left on device, write '/private/secret/path'"), { code: "ENOSPC" });
     }),
     (e) =>

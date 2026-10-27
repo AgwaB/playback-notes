@@ -47,15 +47,16 @@ async function setWritable(target, writable) {
 }
 
 /**
- * Install this skill as a read-only copy (default `~/.agents/skills/video-summarizer`) and
- * point host skill directories at it with symlinks. A read-only copy keeps a host agent
- * running with broad file access from patching the skill mid-task (as a Codex run once
- * did through a development symlink). Re-running replaces only a previous install
- * (identified by its marker) and only replaces symlinks, never real directories.
+ * Install a copy with read-only files (default `~/.agents/skills/video-summarizer`) and
+ * point host skill directories at it with directory links (junctions on Windows).
+ * POSIX directory permissions also prevent creating files; Windows read-only directory
+ * attributes do not enforce a write ACL. These permissions are not an isolation boundary.
+ * Re-running replaces only a previous install (identified by its marker) and only
+ * replaces directory links, never real directories.
  */
 export async function install(options) {
   const source = fileURLToPath(new URL("..", import.meta.url));
-  const home = (value) => value.replace(/^~(?=\/|$)/, os.homedir());
+  const home = (value) => value.replace(/^~(?=[\\/]|$)/, () => os.homedir());
   const target = path.resolve(
     options.target
       ? home(options.target)
@@ -63,11 +64,13 @@ export async function install(options) {
   );
   if (path.resolve(source) === target)
     throw new AppError("INVALID_CONTRACT", "Target is the source tree.", 4);
-  const links = (options.link ?? "")
-    .split(",")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => path.resolve(home(l)));
+  const links = [...new Set(
+    (options.link ?? "")
+      .split(",")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => path.resolve(home(l))),
+  )];
   // One installer per target at a time (mkdir is atomic); a crashed run leaves the lock,
   // which the error names.
   const lock = `${target}.install-lock`;
@@ -157,21 +160,32 @@ async function installLocked(options, source, target, links) {
   const topWritable = (dir, on) => chmod(dir, on ? 0o755 : 0o555);
   const previous = present ? `${target}.previous-${stamp}` : null;
   let swapped = false;
-  const relinked = []; // { link, before: string|null }
+  const relinked = []; // { link, before: string|null, backup: string|null }
   const fault = (stage) => {
     if (options.faultAt === stage) throw new Error(`injected ${stage} failure`);
   };
-  const pointAt = async (link, value) => {
-    // Atomic replacement: a temporary symlink renamed over the old one. Renaming onto a
-    // real directory fails, so a directory that appeared meanwhile is never replaced.
+  const pointAt = async (link, value, present = false) => {
+    // POSIX can rename over a link atomically. Windows junctions require moving the old
+    // link aside first; retain it until the whole install commits so rollback preserves it.
     const temp = `${link}.tmp-${stamp}`;
-    await symlink(value, temp);
+    let backup = null;
+    await symlink(value, temp, process.platform === "win32" ? "junction" : "dir");
     try {
+      if (process.platform === "win32" && present) {
+        backup = `${link}.previous-${stamp}`;
+        await rename(link, backup);
+        // A real directory that appeared after the initial check must be restored intact.
+        if (!(await lstat(backup)).isSymbolicLink())
+          throw new AppError("OUTPUT_EXISTS", `${link} changed to a real directory.`, 3);
+      }
+      fault("link-swap");
       await rename(temp, link);
     } catch (error) {
       await rm(temp, { force: true }).catch(() => {});
+      if (backup) await rename(backup, link).catch(() => {});
       throw error;
     }
+    return backup;
   };
   const issues = [];
   try {
@@ -205,8 +219,8 @@ async function installLocked(options, source, target, links) {
       const before = current ? await readlink(link) : null;
       await mkdir(path.dirname(link), { recursive: true });
       fault("link");
-      await pointAt(link, target);
-      relinked.push({ link, before });
+      const backup = await pointAt(link, target, current !== null);
+      relinked.push({ link, before, backup });
       issues.push(
         issue(
           "LINKED",
@@ -215,11 +229,16 @@ async function installLocked(options, source, target, links) {
         ),
       );
     }
+    fault("linked");
   } catch (error) {
-    for (const { link, before } of relinked.reverse())
-      await (before ? pointAt(link, before) : rm(link, { force: true })).catch(
-        () => {},
-      );
+    for (const { link, before, backup } of relinked.reverse())
+      await (async () => {
+        if (backup) {
+          await rm(link, { force: true });
+          await rename(backup, link);
+        } else if (before) await pointAt(link, before);
+        else await rm(link, { force: true });
+      })().catch(() => {});
     if (swapped) {
       await setWritable(target, true).catch(() => {});
       await rm(target, { recursive: true, force: true }).catch(() => {});
@@ -230,6 +249,13 @@ async function installLocked(options, source, target, links) {
     await dropStaging();
     throw error;
   }
+  for (const { backup } of relinked)
+    if (backup)
+      await rm(backup, { force: true }).catch(() => {
+        issues.push(
+          issue("PREVIOUS_LINK_LEFT", `The previous link could not be removed: ${backup}`, "warning"),
+        );
+      });
   if (previous)
     try {
       await setWritable(previous, true);
@@ -246,7 +272,7 @@ async function installLocked(options, source, target, links) {
   issues.unshift(
     issue(
       "INSTALLED",
-      `${identity.name} ${identity.version ?? ""} installed read-only at ${target} (renderer ${identity.sha256.slice(0, 12)}).`,
+      `${identity.name} ${identity.version ?? ""} installed with read-only files at ${target} (renderer ${identity.sha256.slice(0, 12)}).`,
       "info",
     ),
   );

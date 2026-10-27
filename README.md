@@ -11,7 +11,7 @@
 ## 시작
 
 1. Node.js **24+**를 준비하고 이 디렉터리에서 `npm ci`를 실행합니다.
-2. `node scripts/install.mjs --link ~/.claude/skills/video-summarizer,~/.codex/skills/video-summarizer`로 읽기 전용 사본(`~/.agents/skills/video-summarizer`)을 설치하고 호스트 스킬 디렉터리를 연결합니다. 개발 트리를 직접 심링크하면 넓은 권한의 호스트가 작업 중 스킬을 고칠 수 있어 권장하지 않습니다. 또는 [SKILL.md](SKILL.md)를 호스트에게 로드하게 합니다. `SKILL.md`만 따로 복사하지 말고 `references/`, `scripts/`, `lib/`, `schemas/`, `templates/`와 의존성을 함께 유지합니다.
+2. `node scripts/install.mjs --link ~/.claude/skills/video-summarizer,~/.codex/skills/video-summarizer`로 읽기 전용 파일 사본(`~/.agents/skills/video-summarizer`)을 설치하고 호스트 스킬 디렉터리를 연결합니다. Windows에서는 관리자 권한 없이 junction을 사용하며 디렉터리 ACL은 변경하지 않습니다. PowerShell 명령과 필수 도구는 [Windows 실행 안내](references/windows.md)를 참고하세요. 개발 트리를 직접 심링크하면 넓은 권한의 호스트가 작업 중 스킬을 고칠 수 있어 권장하지 않습니다. 또는 [SKILL.md](SKILL.md)를 호스트에게 로드하게 합니다. `SKILL.md`만 따로 복사하지 말고 `references/`, `scripts/`, `lib/`, `schemas/`, `templates/`와 의존성을 함께 유지합니다.
 3. “이 영상 브리핑해줘”, “이 로컬 파일을 딥다이브로 정리해줘”처럼 요청합니다. 빠진 소스/모드만 물어봅니다.
 4. PDF에는 설치된 Chrome/Chromium 실행 파일이 필요합니다. 로컬 미디어 처리에는 ffmpeg/ffprobe가 필요할 수 있습니다. 도구·모델·브라우저는 자동 설치하지 않습니다.
 
@@ -32,9 +32,9 @@
 ## 숨기지 않는 제약
 
 - YouTube 토큰·yt-dlp 경로는 업스트림 변경에 민감합니다. 깨지면 `scripts/canary.mjs`로 분류하고 `bgutils-js`/`jsdom`/yt-dlp를 갱신하세요. 로그인 전용 자막은 호스트 캡처 가져오기로만 처리합니다.
-- 로컬 ASR은 한국어 고정 픽스처와 사람이 만든 한국어 자막이 있는 실제 강연 2편(CER 4.3 %, 8.6 %)으로 평가했습니다. 고유명사(화자 이름 포함)를 가장 많이 틀리며, 음악 위에 지어낸 자막 제작자 문구는 `ASR_SUSPECT_SEGMENTS`로 표시합니다. 소형 모델(<1 GiB)은 `ASR_MODEL_COMPACT`를 표시하며 `ggml-large-v3-turbo`를 권장합니다. 청취 기반 인증은 없습니다.
+- 로컬 ASR은 한국어 고정 픽스처와 사람이 만든 한국어 자막이 있는 실제 강연 2편(CER 4.3 %, 8.6 %)으로 평가했습니다. 고유명사(화자 이름 포함)를 가장 많이 틀리며, 음악 위에 지어낸 자막 제작자 문구는 `ASR_SUSPECT_SEGMENTS`로 표시합니다. 1 GiB 미만 모델이 large-v3-turbo로 확인되지 않으면 `ASR_MODEL_COMPACT`를 표시하며 `ggml-large-v3-turbo`를 권장합니다. 청취 기반 인증은 없습니다.
 - tesseract는 합성 텍스트 카드에서만 쓸 만했고 테스트한 뉴스 클립에서는 실패했습니다. Apple Vision 엔진은 macOS 전용이며, 실사 평가는 그 클립 한 편뿐입니다. YouTube 토큰 발급은 macOS 샌드박스가 필요하며, 다른 환경에서는 Android 앱 클라이언트 자막 목록으로 같은 자막을 읽습니다. OCR 텍스트는 힌트이며 호스트가 프레임 이미지를 직접 확인해야 합니다.
-- Linux는 arm64 컨테이너에서 테스트·PDF(Chromium 샌드박스 유지, Docker는 `--security-opt seccomp=unconfined` 필요)·로컬 ASR·yt-dlp·YouTube 자막(토큰 대신 Android 앱 클라이언트 자막 목록)을 확인했습니다. amd64(에뮬레이션)에서도 테스트·PDF·자막을 확인했고, 실기 Linux·Windows는 미검증입니다. 외부 리서치/화자 카드는 의도적으로 범위 밖입니다.
+- Linux는 arm64 컨테이너에서 테스트·PDF(Chromium 샌드박스 유지, Docker는 `--security-opt seccomp=unconfined` 필요)·로컬 ASR·yt-dlp·YouTube 자막(토큰 대신 Android 앱 클라이언트 자막 목록)을 확인했습니다. amd64(에뮬레이션)에서도 테스트·PDF·자막을 확인했습니다. Windows 10/11 x64를 지원 대상으로 하며, Windows 11 실기에서 Node 24/26 각각 일반 테스트 146개와 Chrome/PDF 15개, 실제 whisper.cpp 음성 인식·한글 OCR·YouTube 자막/다운로드·새 설치 사본의 CLI 전체 흐름을 확인했습니다. Windows 10은 호환성 점검까지 완료했으며 실기 실행과 실기 Linux는 미검증입니다. 자세한 범위는 [Windows 지원 안내](docs/windows-support.md)에 있습니다. 외부 리서치/화자 카드는 의도적으로 범위 밖입니다.
 - 전사에 시간 정보가 없으면 만들지 않습니다. 검증 성공이 발언의 사실성이나 인용의 의미적 적합성을 보증하지는 않습니다.
 
 자세한 상태는 [지원 매트릭스](references/support-matrix.md), [추출기 spike](docs/spikes/extractor.md), [검증 기록](docs/verification.md)을 확인하세요.

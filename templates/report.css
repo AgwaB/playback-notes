@@ -105,6 +105,12 @@ h2 {
 h3 {
   font-size: 1rem;
 }
+h1,
+h2,
+h3,
+.diagram-title {
+  text-wrap: balance;
+}
 .metadata,
 .untimed {
   color: var(--muted);
@@ -162,6 +168,16 @@ section {
 }
 p {
   margin: 0 0 1rem;
+}
+p,
+li {
+  text-wrap: pretty;
+}
+.source-phrase {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: baseline;
+  white-space: normal;
 }
 li {
   margin-bottom: 0.6rem;
@@ -233,9 +249,9 @@ figure.diagram {
 }
 .diagram-wrap svg {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
-  max-width: 640px;
+  max-width: none;
   margin: 0 auto;
 }
 table {
@@ -379,6 +395,9 @@ body.pinned .layout {
   }
   body {
     font-size: 16px;
+  }
+  h2 {
+    font-size: clamp(1.15rem, 4.5vw, 1.35rem);
   }
   #source-panel {
     max-height: 75vh;

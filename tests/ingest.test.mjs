@@ -14,6 +14,7 @@ import {
   stat,
 } from "node:fs/promises";
 import path from "node:path";
+import { fakeTool } from "./fake-tool.mjs";
 import os from "node:os";
 import { readDnsPinnedAddresses } from "@steipete/summarize-core";
 import {
@@ -231,7 +232,8 @@ test("default ASR off fails honestly, including with fake ambient cloud keys and
       "SUMMARIZE_DISABLE_LOCAL_TRANSCRIPTION",
       "SUMMARIZE_DISABLE_LOCAL_WHISPER_CPP",
       "TMPDIR",
-    ]);
+      ...(process.platform === "win32" ? ["SystemRoot", "TEMP", "TMP", "USERPROFILE"] : []),
+    ].sort());
     await assert.rejects(
       extractSource(
         request({
@@ -294,13 +296,11 @@ test("real missing/unconfigured local ASR capability is disclosed, not installed
 });
 
 test("explicit mock whisper.cpp exercises only the local adapter and real ffmpeg conversion (not speech accuracy)", async () => {
-  const executable = path.join(root, "mock-whisper");
   const model = path.join(root, "mock-model.bin");
   await writeFile(model, "offline test placeholder, not a speech model");
-  await writeFile(
-    executable,
-    `#!${process.execPath}\nimport fs from 'node:fs';\nif (Object.keys(process.env).some(k => /API_KEY|PROXY|NODE_OPTIONS/.test(k))) process.exit(5);\nif (process.argv.includes('--help')) { console.log('whisper.cpp build 1.7.6'); process.exit(0); }\nconst args=process.argv.slice(2); if (!args.includes('--model') || !args.includes('--output-srt') || args.includes('--download')) process.exit(6);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,100 --> 00:00:00,700\\nMock local adapter text.\\n');\n`,
-    { mode: 0o700 },
+  const executable = await fakeTool(
+    path.join(root, "mock-whisper"),
+    `import fs from 'node:fs';\nif (Object.keys(process.env).some(k => /API_KEY|PROXY|NODE_OPTIONS/.test(k))) process.exit(5);\nif (process.argv.includes('--help')) { console.log('whisper.cpp build 1.7.6'); process.exit(0); }\nconst args=process.argv.slice(2); if (!args.includes('--model') || !args.includes('--output-srt') || args.includes('--download')) process.exit(6);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,100 --> 00:00:00,700\\nMock local adapter text.\\n');\n`,
   );
   const result = await extractSource(
     request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
@@ -310,9 +310,28 @@ test("explicit mock whisper.cpp exercises only the local adapter and real ffmpeg
   assert.equal(result.extraction.provider, "whisper.cpp");
   assert.equal(result.extraction.providerVersion, "1.7.6");
   assert.equal(result.segments[0].text, "Mock local adapter text.");
+  const notice = result.extraction.warnings.find((warning) => warning.code === "ASR_UNVERIFIED");
+  assert.match(notice.message, /timing/i, "ASR timing uncertainty must be disclosed");
+  assert.match(notice.message, /language/i, "language changes can lose speech");
   assert.ok(
     result.extraction.warnings.some((w) => w.code === "ASR_MODEL_COMPACT"),
     "a sub-GiB model file is flagged as compact",
+  );
+  // The header is the verified whisper.cpp large-v3-turbo architecture, with
+  // a Q5 file type. A short stand-in isolates classification, not inference.
+  const turbo = path.join(root, "renamed-model.bin");
+  const header = Buffer.alloc(48);
+  header.write("lmgg");
+  [51866, 1500, 1280, 20, 32, 448, 1280, 20, 4, 128, 2008]
+    .forEach((value, i) => header.writeInt32LE(value, 4 + i * 4));
+  await writeFile(turbo, header);
+  const quantized = await extractSource(
+    request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
+    { workDir: path.join(jobs, "turbo"), localAsrExecutable: executable, localAsrModel: turbo },
+  );
+  assert.ok(
+    !quantized.extraction.warnings.some((w) => w.code === "ASR_MODEL_COMPACT"),
+    "a quantized turbo model must not be mistaken for a small model",
   );
   // A sparse 1 GiB file stands in for large-v3-turbo without writing 1 GiB.
   const large = path.join(root, "ggml-large.bin");
@@ -337,13 +356,11 @@ test("explicit mock whisper.cpp exercises only the local adapter and real ffmpeg
 });
 
 test("ASR segments matching phrases Whisper invents over music are flagged by ID, not removed", async () => {
-  const executable = path.join(root, "mock-whisper-credit");
   const model = path.join(root, "mock-model.bin");
   await writeFile(model, "offline test placeholder, not a speech model");
-  await writeFile(
-    executable,
-    `#!${process.execPath}\nimport fs from 'node:fs';\nif (process.argv.includes('--version')) { console.log('whisper.cpp version: 1.9.5-dev'); process.exit(0); }\nif (process.argv.includes('--help')) process.exit(7);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,000 --> 00:00:00,300\\n한글자막 by 한효정\\n\\n2\\n00:00:00,400 --> 00:00:00,800\\n오늘 제가 얘기할 주제는요\\n');\n`,
-    { mode: 0o700 },
+  const executable = await fakeTool(
+    path.join(root, "mock-whisper-credit"),
+    `import fs from 'node:fs';\nif (process.argv.includes('--version')) { console.log('whisper.cpp version: 1.9.5-dev'); process.exit(0); }\nif (process.argv.includes('--help')) process.exit(7);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,000 --> 00:00:00,300\\n한글자막 by 한효정\\n\\n2\\n00:00:00,400 --> 00:00:00,800\\n오늘 제가 얘기할 주제는요\\n');\n`,
   );
   const result = await extractSource(
     request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
@@ -825,13 +842,11 @@ test("worker cancellation/timeout remove private failed work directories", async
 });
 
 test("local ASR SRT is streamed through a byte-bounded FIFO, not an unbounded disk file", async () => {
-  const executable = path.join(root, "mock-oversized-whisper");
   const model = path.join(root, "output-test-model.bin");
   await writeFile(model, "offline placeholder");
-  await writeFile(
-    executable,
-    `#!${process.execPath}\nimport fs from 'node:fs';\nif (process.argv.includes('--help')) process.exit(0);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','x'.repeat(300000));\n`,
-    { mode: 0o700 },
+  const executable = await fakeTool(
+    path.join(root, "mock-oversized-whisper"),
+    `import fs from 'node:fs';\nif (process.argv.includes('--help')) process.exit(0);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','x'.repeat(300000));\n`,
   );
   await assert.rejects(
     extractSource(

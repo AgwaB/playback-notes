@@ -10,7 +10,9 @@ import {
   symlink,
 } from "node:fs/promises";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fakeTool } from "./fake-tool.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { spawn } from "node:child_process";
@@ -546,11 +548,9 @@ test("yt-dlp download streams to stdout with bounded, cookie-free arguments; byt
       { env: isolatedEnvironment(root), timeout: 15000 },
     );
     const argLog = path.join(root, "ytdlp-args.json");
-    const fakeYtDlp = path.join(root, "yt-dlp");
-    await writeFile(
-      fakeYtDlp,
-      `#!${process.execPath}\nimport { writeFileSync, readFileSync } from "node:fs";\nconst args = process.argv.slice(2);\nwriteFileSync(${JSON.stringify(argLog)}, JSON.stringify(args));\nif (args[args.indexOf("-o") + 1] !== "-") process.exit(7);\nprocess.stdout.write(readFileSync(${JSON.stringify(wav)}));\n`,
-      { mode: 0o700 },
+    const fakeYtDlp = await fakeTool(
+      path.join(root, "yt-dlp"),
+      `import { writeFileSync, readFileSync } from "node:fs";\nconst args = process.argv.slice(2);\nwriteFileSync(${JSON.stringify(argLog)}, JSON.stringify(args));\nif (args[args.indexOf("-o") + 1] !== "-") process.exit(7);\nprocess.stdout.write(readFileSync(${JSON.stringify(wav)}));\n`,
     );
     const policy = normalizeRequest({
       schemaVersion: 1,
@@ -616,10 +616,10 @@ test("yt-dlp download streams to stdout with bounded, cookie-free arguments; byt
     assert.equal(args.at(-1), watchUrl);
     await rm(mediaPath);
     // A tool that exits non-zero (no acceptable format, refused) is a download failure with its fixed cause.
-    const failing = path.join(root, "yt-dlp-fail");
-    await writeFile(failing, `#!${process.execPath}\nprocess.exit(1);\n`, {
-      mode: 0o700,
-    });
+    const failing = await fakeTool(
+      path.join(root, "yt-dlp-fail"),
+      `process.exit(1);\n`,
+    );
     await assert.rejects(
       () =>
         downloadYoutubeAudio(
@@ -650,10 +650,10 @@ test("yt-dlp download streams to stdout with bounded, cookie-free arguments; byt
     assert.equal(await readFile(mediaPath, "utf8"), "stale");
     await rm(mediaPath);
     // A fake that streams nothing is a download failure with a fixed cause; nothing is left behind.
-    const empty = path.join(root, "yt-dlp-empty");
-    await writeFile(empty, `#!${process.execPath}\nprocess.exit(0);\n`, {
-      mode: 0o700,
-    });
+    const empty = await fakeTool(
+      path.join(root, "yt-dlp-empty"),
+      `process.exit(0);\n`,
+    );
     await assert.rejects(
       () =>
         downloadYoutubeAudio(
@@ -668,11 +668,9 @@ test("yt-dlp download streams to stdout with bounded, cookie-free arguments; byt
     assert.ok(!(await readdir(root)).includes("media.bin"));
     // The byte budget is enforced while bytes arrive: an 8 KiB stream under a 1 KiB cap is
     // cut off (the tool is killed) and the partial file removed — not checked afterwards.
-    const oversized = path.join(root, "yt-dlp-big");
-    await writeFile(
-      oversized,
-      `#!${process.execPath}\nprocess.stdout.write(Buffer.alloc(8192), () => setTimeout(() => process.exit(0), 2000));\n`,
-      { mode: 0o700 },
+    const oversized = await fakeTool(
+      path.join(root, "yt-dlp-big"),
+      `process.stdout.write(Buffer.alloc(8192), () => setTimeout(() => process.exit(0), 2000));\n`,
     );
     await assert.rejects(
       () =>
@@ -689,11 +687,9 @@ test("yt-dlp download streams to stdout with bounded, cookie-free arguments; byt
       "partial output is removed",
     );
     // Files a fake tool writes on its own are not the download: only the metered stream counts.
-    const rogue = path.join(root, "yt-dlp-rogue");
-    await writeFile(
-      rogue,
-      `#!${process.execPath}\nimport { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(path.join(root, "media.m4a"))}, Buffer.alloc(16));\nprocess.exit(0);\n`,
-      { mode: 0o700 },
+    const rogue = await fakeTool(
+      path.join(root, "yt-dlp-rogue"),
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(path.join(root, "media.m4a"))}, Buffer.alloc(16));\nprocess.exit(0);\n`,
     );
     await assert.rejects(
       () =>
@@ -1190,10 +1186,8 @@ test("round 5: the network failure cause is per request; yt-dlp is fingerprinted
   // Cache identity covers the yt-dlp executable whenever frames can use it.
   const root = await tmp("fp-");
   try {
-    const a = path.join(root, "yt-a"),
-      b = path.join(root, "yt-b");
-    await writeFile(a, "#!/bin/sh\necho a\n", { mode: 0o700 });
-    await writeFile(b, "#!/bin/sh\necho b\n", { mode: 0o700 });
+    const a = await fakeTool(path.join(root, "yt-a"), 'console.log("a");\n');
+    const b = await fakeTool(path.join(root, "yt-b"), 'console.log("b");\n');
     const req = normalizeRequest({
       schemaVersion: 1,
       source: { kind: "url", value: watchUrl },
@@ -1230,7 +1224,7 @@ test("round 5: the network failure cause is per request; yt-dlp is fingerprinted
 
 test("round 5: argument errors never echo raw values (a misplaced signed URL)", async () => {
   const { stdout } = await exec(process.execPath, [
-    path.resolve(new URL("../scripts/prepare.mjs", import.meta.url).pathname),
+    fileURLToPath(new URL("../scripts/prepare.mjs", import.meta.url)),
     "https://user:SECRET_PW@example.com/v.mp4?token=SECRET_TOKEN",
   ]).catch((e) => e);
   assert.ok(!/SECRET_PW|SECRET_TOKEN/.test(stdout), stdout);

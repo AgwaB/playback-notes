@@ -1,5 +1,6 @@
 import path from "node:path";
-import { access, readFile } from "node:fs/promises";
+import os from "node:os";
+import { access, readFile, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import {
@@ -51,6 +52,7 @@ async function capabilities(options) {
     ffmpeg: tool("ffmpeg"),
     ffprobe: tool("ffprobe"),
     localAsrExecutable: await provided(options["local-asr-executable"], true),
+    localAsrGpuExecutable: await provided(options["local-asr-gpu-executable"], true),
     localAsrModel: await provided(options["local-asr-model"]),
     pdfBrowser: await provided(options["browser-executable"], true),
     ocr: await provided(
@@ -61,9 +63,31 @@ async function capabilities(options) {
     hostVision: { status: "unknown", version: null },
   };
 }
-export async function prepare(options) {
+// A user-owned preference applies only to its matching explicit CPU runtime and model.
+async function preferredGpu(options, request, preferencePath) {
+  if (request.policy.asr !== "local" || options["local-asr-gpu-executable"] ||
+      !options["local-asr-executable"] || !options["local-asr-model"]) return options;
+  try {
+    if ((await stat(preferencePath)).size > 64 * 1024) return options;
+    const preference = JSON.parse(await readFile(preferencePath, "utf8"));
+    const values = [preference.localAsrExecutable, preference.localAsrModel, preference.localAsrGpuExecutable];
+    if (!values.every((value) => typeof value === "string" && path.isAbsolute(value))) return options;
+    const normalize = (value) => {
+      const resolved = path.resolve(value);
+      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    };
+    if (normalize(values[0]) !== normalize(options["local-asr-executable"]) ||
+        normalize(values[1]) !== normalize(options["local-asr-model"])) return options;
+    return { ...options, "local-asr-gpu-executable": values[2] };
+  } catch {
+    // A missing or malformed optional preference must not disable explicit CPU ASR.
+    return options;
+  }
+}
+export async function prepare(options, { asrPreferencePath = path.join(os.homedir(), ".agents", "video-summarizer-asr.json") } = {}) {
   required(options, ["request", "work-dir"]);
   const request = normalizeRequest((await readJson(options.request)).data);
+  options = await preferredGpu(options, request, asrPreferencePath);
   return withLock(options["work-dir"], async (workDir) => {
     const caps = await capabilities(options);
     await atomicWrite(workDir, "capabilities.json", jsonBytes(caps));
@@ -87,6 +111,7 @@ export async function prepare(options) {
     const extractionOptions = {
       workDir,
       localAsrExecutable: options["local-asr-executable"],
+      localAsrGpuExecutable: options["local-asr-gpu-executable"],
       localAsrModel: options["local-asr-model"],
       youtubeCapture: options["youtube-capture"],
       tesseractExecutable: options["tesseract-executable"],
@@ -211,6 +236,7 @@ if (isMain(import.meta.url))
           "work-dir",
           "browser-executable",
           "local-asr-executable",
+          "local-asr-gpu-executable",
           "local-asr-model",
           "youtube-capture",
           "tesseract-executable",
