@@ -134,6 +134,8 @@ export function sampleData() {
     source: { kind: "url", value: evidence.source.canonicalUrl },
     mode: "briefing",
     outputLanguage: "ko",
+    // Broad rendering fixtures explicitly exercise all exports; production defaults are lighter.
+    formats: ["html", "markdown", "pdf"],
   });
   return {
     request,

@@ -1,4 +1,4 @@
-name: Windows
+name: Cross-platform
 
 on:
   push:
@@ -8,31 +8,65 @@ permissions:
   contents: read
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  test:
+    name: ${{ matrix.os }} · Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        node: [24, 26]
+        os: [ubuntu-24.04, windows-2025, macos-15]
+        node: ["24.15.0", "26"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - name: Install test media and PDF tools
+      - name: Install Windows media tools
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           choco install ffmpeg --yes --no-progress --limit-output
           if ($LASTEXITCODE -ne 0) { throw 'ffmpeg installation failed' }
+      - name: Configure Windows browser and PDF tests
+        if: runner.os == 'Windows' && matrix.node == '26'
+        shell: pwsh
+        run: |
           $archive = Join-Path $env:RUNNER_TEMP 'poppler.zip'
           Invoke-WebRequest 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip' -OutFile $archive
           if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne '7a6f256a0ddf7536182246a5733331bf4677cbcc34f4663774947ad34556c8d0') { throw 'Poppler checksum mismatch' }
           Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $env:RUNNER_TEMP 'poppler')
           Join-Path $env:RUNNER_TEMP 'poppler/poppler-26.09.0/Library/bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          "TEST_BROWSER_EXECUTABLE=$env:ProgramFiles\Google\Chrome\Application\chrome.exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - run: npm ci --no-audit --no-fund
+          $browser = Join-Path $env:ProgramFiles 'Google/Chrome/Application/chrome.exe'
+          if (!(Test-Path -LiteralPath $browser -PathType Leaf)) { throw 'The runner image does not provide Google Chrome' }
+          "TEST_BROWSER_EXECUTABLE=$browser" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Install Linux test tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
+          if [[ '${{ matrix.node }}' == '26' ]]; then
+            sudo apt-get install --no-install-recommends -y poppler-utils fonts-noto-cjk
+            browser="$(command -v google-chrome || command -v google-chrome-stable)"
+            test -x "$browser"
+            printf 'TEST_BROWSER_EXECUTABLE=%s\n' "$browser" >> "$GITHUB_ENV"
+          fi
+      - name: Install macOS test tools
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew list --versions ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+          if [[ '${{ matrix.node }}' == '26' ]]; then
+            brew list --versions poppler >/dev/null 2>&1 || brew install poppler
+            browser='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+            test -x "$browser"
+            printf 'TEST_BROWSER_EXECUTABLE=%s\n' "$browser" >> "$GITHUB_ENV"
+          fi
+      - run: npm ci --engine-strict --no-audit --no-fund
       - name: Exercise CRLF checkout
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $file = Join-Path $env:GITHUB_WORKSPACE 'templates/player.js'
@@ -40,4 +74,12 @@ jobs:
           [IO.File]::WriteAllText($file, ($text -replace '\n', "`r`n"), [Text.UTF8Encoding]::new($false))
       - run: npm run check
       - run: npm test
-      - run: npm run test:browser
+      # The browser is the same for both Node versions on each OS. Run its complete
+      # suite once per OS; the minimum Node version still runs every core test.
+      - name: Verify browser test prerequisites
+        if: matrix.node == '26'
+        run: |
+          node --input-type=module -e "import { accessSync, constants } from 'node:fs'; import { execFileSync } from 'node:child_process'; accessSync(process.env.TEST_BROWSER_EXECUTABLE, constants.X_OK); for (const tool of ['pdftotext', 'pdfinfo']) execFileSync(tool, ['-v'], { stdio: 'inherit' });"
+      - name: Browser and PDF regression tests
+        if: matrix.node == '26'
+        run: npm run test:browser

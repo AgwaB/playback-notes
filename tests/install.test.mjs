@@ -61,6 +61,8 @@ test("install makes files read-only, relinks only directory links, and replaces 
     access(path.join(target, "tests")),
     "tests are not installed",
   );
+  await access(path.join(target, "docs", "windows-support.md"));
+  await access(path.join(target, "references", "wsl.md"));
   await assert.rejects(
     access(path.join(target, "lib", "view.mjs"), constants.W_OK),
     "files are read-only",

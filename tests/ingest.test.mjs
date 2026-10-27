@@ -2,6 +2,8 @@ import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import {
   mkdtemp,
   open,
@@ -12,6 +14,7 @@ import {
   rm,
   mkdir,
   stat,
+  symlink,
 } from "node:fs/promises";
 import path from "node:path";
 import { fakeTool } from "./fake-tool.mjs";
@@ -413,6 +416,63 @@ test("fingerprint hashes media/transcript content and parser format, ignoring re
     a,
     await ingestionFingerprint(request({ transcriptFile: modified })),
   );
+});
+
+test("fingerprint reads shared runtime files once per call and re-reads changed bytes on the next call", async (t) => {
+  const runtime = path.join(root, "fingerprint-runtime");
+  const alias = path.join(root, "fingerprint-runtime-alias");
+  await mkdir(runtime);
+  await symlink(runtime, alias, process.platform === "win32" ? "junction" : "dir");
+  const cpu = path.join(runtime, "whisper"), model = path.join(runtime, "model.bin"), library = path.join(runtime, "ggml-cuda.dll");
+  await Promise.all([writeFile(cpu, "runtime"), writeFile(model, "model 1"), writeFile(library, "library 1")]);
+  const opts = { localAsrExecutable: cpu, localAsrGpuExecutable: path.join(alias, "whisper"), localAsrModel: model };
+  const input = request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } });
+  const original = fs.createReadStream;
+  const reads = [];
+  const mock = t.mock.method(fs, "createReadStream", (file, options) => {
+    reads.push(String(file));
+    return original(file, options);
+  });
+  syncBuiltinESMExports();
+  try {
+    const fingerprint = async () => {
+      reads.length = 0;
+      const result = await ingestionFingerprint(input, opts);
+      for (const file of [media, cpu, model, library])
+        assert.equal(reads.filter((read) => read === fs.realpathSync(file)).length, 1, `${path.basename(file)} is read once`);
+      assert.equal(reads.length, 4, "aliases do not cause a second file read");
+      return result;
+    };
+    const first = await fingerprint();
+    await writeFile(model, "model 2");
+    const second = await fingerprint();
+    assert.notEqual(second, first, "same-size model edits invalidate the next snapshot");
+    await writeFile(library, "library 2");
+    assert.notEqual(await fingerprint(), second, "same-size runtime library edits are not cached across calls");
+  } finally {
+    mock.mock.restore();
+    syncBuiltinESMExports();
+  }
+});
+
+test("an explicit transcript does not require or fingerprint unused ASR tools; visual downloads still do", async () => {
+  const input = request({ policy: { ...basePolicy, asr: "local" } });
+  const unavailable = {
+    localAsrExecutable: path.join(root, "missing-asr"),
+    localAsrGpuExecutable: path.join(root, "missing-gpu"),
+    localAsrModel: path.join(root, "missing-model"),
+    localAsrCodeSwitch: "ko-en",
+    ytDlpExecutable: path.join(root, "missing-downloader"),
+  };
+  assert.equal(await ingestionFingerprint(input, unavailable), await ingestionFingerprint(input));
+  const visual = { ...input, source: { kind: "url", value: "https://www.youtube.com/watch?v=jNQXAC9IVRw" }, policy: { ...input.policy, visual: "frames" } };
+  await assert.rejects(ingestionFingerprint(visual, unavailable), code("CAPABILITY_MISSING"));
+  const downloader = path.join(root, "fingerprint-downloader");
+  await writeFile(downloader, "version 1");
+  const options = { ...unavailable, ytDlpExecutable: downloader };
+  const first = await ingestionFingerprint(visual, options);
+  await writeFile(downloader, "version 2");
+  assert.notEqual(await ingestionFingerprint(visual, options), first);
 });
 
 test("transcript timing/resource/format errors are not silently clamped or truncated", async () => {

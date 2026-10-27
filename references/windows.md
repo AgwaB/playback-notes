@@ -1,6 +1,6 @@
 # Windows 실행
 
-Windows 10/11 x64를 대상으로 Windows 네이티브 Node.js 24 이상을 사용합니다. WSL은 별도 Linux 환경입니다.
+Windows 10/11 x64를 대상으로 Windows 네이티브 Node.js 24.15 이상인 24.x 또는 26 이상을 사용합니다. Node 25는 지원하지 않습니다. Windows 10은 호환성 점검 대상이며 실기 검증은 아직 없습니다. WSL은 별도 Linux 환경입니다. 현재 검증 범위는 [지원 표](support-matrix.md)를 따릅니다.
 PowerShell에서 저장소 디렉터리로 이동한 뒤 실행합니다.
 
 ```powershell
@@ -15,7 +15,7 @@ node scripts/install.mjs --link "$HOME\.claude\skills\video-summarizer,$HOME\.co
 같은 계정의 파일 추가·교체를 막는 보안 경계는 아닙니다.
 
 - 로컬 미디어·장면 처리: PATH에 있는 `ffmpeg.exe`, `ffprobe.exe`.
-- PDF: 설치된 Chrome/Chromium `.exe`를 `--browser-executable`로 전달합니다.
+- PDF를 요청한 경우: 설치된 Chrome/Chromium `.exe`를 `--browser-executable`로 전달합니다. 기본 HTML·Markdown 출력에는 브라우저가 필요하지 않습니다.
 - 선택적 ASR·OCR·YouTube 미디어: 기존 whisper.cpp/모델, tesseract, yt-dlp `.exe`를 명시합니다.
 - 승인된 로컬 ASR에서 GPU 빌드가 설치되어 있으면 `--local-asr-gpu-executable`로 지정합니다. GPU를 사용할 수 없으면 명시한 CPU 실행 파일로 처리합니다. GPU와 호환되는 실행 파일과 필요한 DLL은 미리 준비해야 하며, 처리 도중 자동 설치하지 않습니다.
 - `.cmd`/`.bat` 래퍼는 실행하지 않습니다. 도구·모델은 자동 설치하지 않습니다.

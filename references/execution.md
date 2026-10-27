@@ -4,7 +4,7 @@ These are **host tool calls**, not commands the user must learn. Substitute abso
 
 ## Installation and capabilities
 
-Install the package's pinned dependencies with `npm ci` in the skill directory after installation has been authorized. Node.js **24+** is required. `npm ci` does not install Chromium, an ASR model or a speech engine. No API key is needed.
+Install the package's pinned dependencies with `npm ci` in the skill directory after installation has been authorized. Supported Node.js versions are **24.15 or later in the 24.x line, or 26+** (`^24.15.0 || >=26.0.0`); Node 25 is excluded. `npm ci` does not install Chromium, an ASR model or a speech engine. No API key is needed.
 
 Optional tools are not installed automatically:
 
@@ -32,7 +32,7 @@ named-pipe ASR output and read-only attribute limits.
 <public-parent>/<source-id>/<mode>/<revision>/
   index.html
   report.md
-  report.pdf
+  report.pdf              # only when requested and successfully exported
   manifest.json
   assets/                 # referenced images only
   media/                  # only after copyLocalMedia approval
@@ -54,7 +54,7 @@ Only the source, mode and language are mandatory beyond `schemaVersion`:
   "outputLanguage": "ko",
   "focus": null,
   "transcriptFile": null,
-  "formats": ["html", "markdown", "pdf"],
+  "formats": ["html", "markdown"],
   "policy": {
     "asr": "off",
     "partialEvidenceApproval": null,
@@ -72,20 +72,44 @@ Only the source, mode and language are mandatory beyond `schemaVersion`:
 
 `transcriptLanguages` is a descending caption-language priority (`["ko", "en"]`): within a language a manually created track is preferred over an auto-generated one, then the next language; with an empty list the video's original language wins — the audio track the player marks as original, or, when none is marked, the default audio track (e.g. `en-US.4` → English; on a dubbed video with no original marker that default may be the dub) — because the first listed manual track is often a translation; then manual before auto-generated, then the player's order. `visual` is `off`, `frames` (key-scene candidates, no OCR) or `local-ocr` (sampled frames with OCR); both are explicit user decisions, see below. There is no token setting: a proof-of-origin token is minted wherever the confined runtime exists. A web track YouTube marks as token-gated (`exp=xpe`) is not requested without a token; when no token can be used, or it is refused, one player request as YouTube's Android app client (`ANDROID` 20.10.38, as youtube-transcript-api and summarize-core send it) lists caption URLs that are not gated, and the track with the same language and kind is fetched (`CAPTIONS_ANDROID_CLIENT`). Both requests pass the same URL policy, DNS pinning and byte budget; no further clients or retries. With a token, the YouTube caption request carries a content-bound proof-of-origin token minted in a confined child process (`lib/botguard-worker.mjs`: bgutils-js + jsdom run Google's attestation program under macOS `sandbox-exec` + Node's permission model, with no network of its own; its two attestation requests are relayed by the parent over the DNS-pinned transport to `https://www.youtube.com/api/jnn/v1/{Create,GenerateIT}` only, on their own ≤16 MiB allowance that is in addition to `maxDownloadBytes` (which covers the watch page, captions and any approved audio/video download together), transport deadline ≤60 s, child killed at ≤90 s; macOS only). Evidence then carries the `BOTGUARD_TOKEN` warning. Captions from auto-generated tracks sometimes end after the advertised length; the duration is then left unknown (`DURATION_UNVERIFIED`) rather than clipping.
 
+The default formats are HTML and Markdown. Include `"pdf"` only when the user requests PDF; then select an existing Chrome/Chromium executable. Missing explicitly requested PDF remains an incomplete job, but an ordinary summary needs no PDF runtime. A later change to requested formats requires a new output revision.
+
 For a local input use `source.kind: "local"` and an absolute file path. A user-supplied `transcriptFile` must be a readable SRT, VTT or TXT file. Untimed TXT remains untimed. `focus` guides the host's authoring, not extraction or an internal model. The example YouTube URL is syntax only, not a promise of accessible captions.
 
 ## Tool sequence
 
 ```bash
-node "$SKILL/scripts/prepare.mjs" --request "$JOB/request.json" --work-dir "$JOB" --check --browser-executable "$BROWSER"
+node "$SKILL/scripts/prepare.mjs" --request "$JOB/request.json" --work-dir "$JOB" --check
 node "$SKILL/scripts/prepare.mjs" --request "$JOB/request.json" --work-dir "$JOB"
 ```
 
-If local ASR was approved and supported for the source, set `policy.asr` to `local` and supply `--local-asr-executable /absolute/whisper-cli --local-asr-model /absolute/model.bin`. Do not pass these as an implicit approval when `asr` remains off. Model choice matters more than runtime: on the Korean fixtures `ggml-large-v3-turbo.bin` halves small's CER on clean speech (1.9–2.9 % vs 3.5–4.8 %), cuts noisy-speech CER by 2–4× per fixture (natural-noise 7 % vs 29 %) and retains 11 of 19 selected sensitive assertions with none omitted (small: 8/19, one omitted) at 1.1–6.5× small's run time; evidence carries `ASR_MODEL_COMPACT` for a sub-GiB model that is not recognized by its GGML architecture header as large-v3-turbo; file size alone does not establish model quality. Greedy decoding is used; `-bs 5` beam search gave no gain at twice the time. For a YouTube video **without captions**, also pass `--yt-dlp-executable /absolute/yt-dlp` (a current release; yt-dlp needs a JavaScript runtime and is given this Node binary via `--js-runtimes`): audio-only media is streamed by yt-dlp (`--ignore-config --no-plugin-dirs --no-playlist --no-cache-dir --no-remote-components -f "bestaudio[protocol=https]" -o -`) to stdout and saved by the skill itself with the byte budget enforced as bytes arrive (yt-dlp is killed past `maxDownloadBytes`). Only plain-HTTPS audio formats are accepted because yt-dlp stages fragmented DASH/HLS formats as fragment files on disk regardless of `-o -`; a video without such a format is refused (`download-failed`), and a result that does not probe as audio-only is refused; then transcribed locally; evidence carries `PLATFORM_MEDIA_DOWNLOADED`. Captions, when present, are always preferred over ASR.
+If local ASR was approved and supported for the source, set `policy.asr` to `local` and supply `--local-asr-executable /absolute/whisper-cli --local-asr-model /absolute/model.bin`. Do not pass these as an implicit approval when `asr` remains off. Model choice matters more than runtime: on the Korean fixtures `ggml-large-v3-turbo.bin` halves small's CER on clean speech (1.9–2.9 % vs 3.5–4.8 %), cuts noisy-speech CER by 2–4× per fixture (natural-noise 7 % vs 29 %) and retains 11 of 19 selected sensitive assertions with none omitted (small: 8/19, one omitted) at 1.1–6.5× small's run time; evidence carries `ASR_MODEL_COMPACT` for a sub-GiB model that is not recognized by its GGML architecture header as large-v3-turbo; file size alone does not establish model quality. The adapter keeps the runtime's decoding defaults; the tested whisper.cpp 1.9.5 executable reports 5 beams by default. Decoder comparisons must use the actual runtime flags, not assume that the default is greedy. For a YouTube video **without captions**, also pass `--yt-dlp-executable /absolute/yt-dlp` (a current release; yt-dlp needs a JavaScript runtime and is given this Node binary via `--js-runtimes`): audio-only media is streamed by yt-dlp (`--ignore-config --no-plugin-dirs --no-playlist --no-cache-dir --no-remote-components -f "bestaudio[protocol=https]" -o -`) to stdout and saved by the skill itself with the byte budget enforced as bytes arrive (yt-dlp is killed past `maxDownloadBytes`). Only plain-HTTPS audio formats are accepted because yt-dlp stages fragmented DASH/HLS formats as fragment files on disk regardless of `-o -`; a video without such a format is refused (`download-failed`), and a result that does not probe as audio-only is refused; then transcribed locally; evidence carries `PLATFORM_MEDIA_DOWNLOADED`. Captions, when present, are always preferred over ASR.
 
 When local ASR is approved, an optional `--local-asr-gpu-executable /absolute/whisper-cli` supplies an already-installed CUDA, Vulkan or Metal candidate alongside the required `--local-asr-executable` CPU-capable fallback. When the explicit CPU executable and model match `~/.agents/video-summarizer-asr.json`, `prepare` also uses that preference file’s `localAsrGpuExecutable` automatically; an explicit GPU option takes precedence. The adapter probes for a working backend and uses the CPU runtime if the GPU is unavailable or fails to initialize; other errors remain errors. If only one runtime is specified, its own default GPU selection applies. An ASR runtime must be built for the desired accelerator; hardware presence alone is not sufficient. No driver, runtime or model is downloaded or installed by `prepare`. The private `raw/extraction.json` records the observed backend and fallback reason; cached evidence is reused as a snapshot rather than rerunning acceleration detection.
 
+An `ASR_GPU_FALLBACK` evidence warning reports CPU fallback and, on WSL when `/dev/dxg` is inaccessible, points to GPU support or host device-access policy as possible causes. It does not establish which cause applies. WSL has its own Linux tool paths and host settings; see [WSL setup](wsl.md). The normal `asrTimeoutMs` is one hour, which may be too short for long CPU jobs. Pick a larger explicit budget when appropriate, rather than treating a test harness timeout as proof that transcription cannot finish.
+
 ASR segment times are estimates: check cited times against the source, especially after long pauses or language changes. Built-in whisper.cpp VAD is not enabled by this adapter. In a Windows 11 test, its default settings omitted detected English; splitting at a clear silence recovered it in that sample, but both energy-based silence detection and VAD missed recoverable quiet speech in other synthetic samples. Do not discard audio solely because it was classified as silence.
+
+## Automatic ko-en recheck
+
+For explicitly requested Korean/English mixed speech, add `--local-asr-code-switch ko-en` to an approved local-ASR `prepare` call. The same configured Whisper model and runtime re-detect the language of short Latin-only primary segments (1.5–10 seconds). A Korean detection probability of at least 0.90 permits a local retry. A retry is accepted only with at least four Hangul syllables, no Latin letters, preserved numeric notation and valid bounded timestamps. Ambiguous numeric changes are rejected; this does not verify every unit or semantic claim. This is a conservative heuristic, not proof of accuracy; English spoken with a Korean accent or overlapping speakers can still confuse it. Already mixed/Hangul segments are left alone. This option does not find speech wholly missing from the primary transcript.
+
+Detection is batched to reuse the loaded model, capped at 120 eligible segments spread across the source. At most 24 retries and two additional minutes are allowed, within the existing overall ASR timeout. GPU/CPU selection follows the successful primary runtime. Only exact digital silence is skipped; quiet speech is not discarded. If optional recheck tooling fails, retained primary text and a limited-recheck warning remain; cancellation of the main job still cancels. No model, driver or service is installed.
+
+`raw/extraction.json` retains the original SRT in `localAsr` and the mode, scan counts, decisions and changes in `localAsrLanguageRecheck`. Evidence uses the accepted text with the **original segment intervals**, which remain estimates. `ASR_LANGUAGE_RECHECK` reports changes and incomplete rechecks. The mode is part of the evidence cache identity. Plain prepare calls and other language pairs keep the existing behavior; the option itself does not authorize ASR or downloads.
+
+On two actual mixed interviews this recovered selected Korean passages and a romanized word, while names and some words remained wrong. On 78 recorded mixed-language evaluation utterances it revised one mistranslated Korean segment and left the other outputs unchanged. These narrow tests do not establish a general accuracy rate. The separate review tool below remains useful for uncertain passages.
+
+## Reviewing a mixed-language passage
+
+When local ASR is already approved and a local media file is available, review a suspected short passage in a **new private work directory**. The command accepts source-relative millisecond offsets, 1–120 seconds per run, and uses both 6- and 8-second overlapping windows. Use the original file's timeline; if reviewing a previously cut clip, offsets are relative to that clip. It needs ffmpeg, ffprobe and the same existing CPU executable and model as prepare; a matching GPU preference is used automatically, with CPU fallback. Optionally pass `--local-asr-gpu-executable` explicitly. No media or runtime is downloaded. Each run is limited to 20 minutes; CPU review can take much longer than GPU review.
+
+```bash
+node "$SKILL/scripts/asr-review.mjs" --source /absolute/private/media --work-dir /absolute/private/review-job --start-ms 85000 --end-ms 103000 --local-asr-executable /absolute/whisper-cli --local-asr-model /absolute/model.bin
+```
+
+`review.json` contains the source SHA-256, range, window boundaries, per-window backend/fallback and candidate text/times. Those times are estimates. Overlaps can omit English, duplicate words, mistranslate or invent speech, including on silence. Some invalid outputs are withheld as unavailable; `partial` is not a successful complete review. Listen to the original passage and treat all alternatives as untrusted, unverified hints. They are not integrated into the immutable evidence or report and cannot be cited as such. A candidate that differs is not automatically more accurate. This targeted tool does not find every omission; it adds work and is not a replacement for transcription of the full source.
 
 For explicitly approved host-browser YouTube capture, pass `--youtube-capture /absolute/private/capture.json`; see the [capture contract and acquisition rules](youtube-browser-capture.md). It cannot be combined with `transcriptFile`. DOM imports create partial evidence and require the existing snapshot-bound approval. This import option does not launch a browser.
 
@@ -122,13 +146,15 @@ After the host reads chunks (or validated notes), writes the ledger and authors 
 ```bash
 node "$SKILL/scripts/validate.mjs" --request "$JOB/request.json" --evidence "$JOB/evidence.json" --analysis "$JOB/analysis-ledger.json" --report "$JOB/report.json" --work-dir "$JOB"
 node "$SKILL/scripts/render.mjs" --request "$JOB/request.json" --evidence "$JOB/evidence.json" --analysis "$JOB/analysis-ledger.json" --report "$JOB/report.json" --work-dir "$JOB" --out-dir "$OUT"
-node "$SKILL/scripts/export.mjs" --request "$JOB/request.json" --evidence "$JOB/evidence.json" --analysis "$JOB/analysis-ledger.json" --report "$JOB/report.json" --work-dir "$JOB" --out-dir "$OUT" --browser-executable "$BROWSER"
+node "$SKILL/scripts/export.mjs" --request "$JOB/request.json" --evidence "$JOB/evidence.json" --analysis "$JOB/analysis-ledger.json" --report "$JOB/report.json" --work-dir "$JOB" --out-dir "$OUT"
 node "$SKILL/scripts/verify-output.mjs" --out-dir "$OUT"
 ```
 
 `verify-output.mjs` checks that the manifest's renderer identity (SHA-256 over the skill's `lib`, `templates`, `schemas`, `scripts` and `package.json`) equals the installed skill's and that every listed file still matches its hash; `RENDERER_MISMATCH` means a modified or copied renderer (or another skill version) produced the revision. It is tamper-evident, not tamper-proof.
 
 Pass every flag and value as separate shell words. Do not collect them in one variable and expand it unquoted: zsh does not word-split `$ARGS` (use a shell array, `"${args[@]}"`, or repeat the flags), and the CLI then reports the whole string as one unknown option.
+
+For a request containing `pdf`, add `--browser-executable /absolute/path/to/chromium` to the preflight and export commands. Use an existing browser; default HTML/Markdown output does not need it.
 
 `export.mjs` defaults to the requested non-HTML formats (an HTML-only request returns `ok` with `NOTHING_TO_EXPORT`, so the same render → export → verify sequence works for every request). `--formats markdown` or `--formats pdf` retries a subset, but overall completion still reflects **all** requested formats. `--font-dir /absolute/fonts` loads 1–16 existing TTF/OTF/WOFF fonts into the isolated PDF renderer; it does not upload or copy them into the public HTML. Verify their licensing before distribution.
 

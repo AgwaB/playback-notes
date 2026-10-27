@@ -112,13 +112,20 @@ test("Markdown exports the diagram as structured text, not an image or raw SVG",
   const f = await withBlock(flow(), t);
   const md = markdownDocument(f.bundle);
   assert.ok(md.includes("**원인 사슬**"));
+  assert.match(md, /- 산업주의 수요(?:\r?\n|$)/);
   assert.ok(md.includes("산업주의 수요 → 대학의 자기복제 (설계)"));
   assert.ok(!md.includes("<svg"));
   assert.deepEqual(diagramText(stack()), [
-    "1. 수학 · 언어",
-    "2. 인문학",
-    "3. 예술 — 미술·음악 > 연극·춤",
+    "수학 · 언어",
+    "인문학",
+    "예술 — 미술·음악 > 연극·춤",
   ]);
+  const stackFixture = await withBlock(stack(), t);
+  const stackMarkdown = markdownDocument(stackFixture.bundle);
+  assert.match(stackMarkdown, /1\. 수학 · 언어/);
+  assert.match(stackMarkdown, /2\. 인문학/);
+  assert.match(stackMarkdown, /3\. 예술 — 미술·음악 > 연극·춤/);
+  assert.doesNotMatch(stackMarkdown, /\d\. \d\\?\./);
 });
 
 test("diagram contract rejects unknown refs, cycles, isolated nodes, >2 focal, stack edges and extras", async () => {

@@ -3,6 +3,7 @@ node_modules/
 .ruff_cache/
 .video-summarizer/
 artifacts/
+.omo/
 coverage/
 *.tgz
 .DS_Store

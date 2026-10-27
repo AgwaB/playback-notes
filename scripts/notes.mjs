@@ -12,6 +12,7 @@ import {
 } from "../lib/io.mjs";
 import { validateEvidence } from "../lib/validation.mjs";
 import { notesDigest, validateNote } from "../lib/notes.mjs";
+import { indexEvidence } from "../lib/evidence.mjs";
 
 async function lockWithRetry(dir, body, attempts = 40) {
   for (let i = 0; ; i++) {
@@ -32,6 +33,7 @@ export async function notes(options) {
   const evidenceFile = await readJson(options.evidence);
   const evidence = evidenceFile.data;
   validateEvidence(evidence);
+  const evidenceIndex = indexEvidence(evidence);
   const dir = path.resolve(options["notes-dir"]);
   const files = (await readdir(dir))
     .filter((f) => /^chunk-\d{5}\.json$/.test(f))
@@ -46,7 +48,7 @@ export async function notes(options) {
           "INVALID_CONTRACT",
           `Note file ${file} is named for another chunk.`,
         );
-      validateNote(note, evidence, evidenceFile.sha256);
+      validateNote(note, evidence, evidenceFile.sha256, evidenceIndex);
       notes.push(note);
     } catch (error) {
       issues.push(
@@ -82,7 +84,7 @@ export async function notes(options) {
       await atomicWrite(
         options["work-dir"],
         "notes-digest.md",
-        Buffer.from(notesDigest(notes, evidence), "utf8"),
+        Buffer.from(notesDigest(notes, evidence, evidenceIndex), "utf8"),
       );
       artifacts.push(
         await artifact(options["work-dir"], "notes-digest.md", "digest"),

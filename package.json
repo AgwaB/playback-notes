@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Host-agent video evidence to grounded HTML, Markdown and PDF",
   "engines": {
-    "node": ">=24"
+    "node": "^24.15.0 || >=26.0.0"
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs",

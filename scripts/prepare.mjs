@@ -14,9 +14,10 @@ import {
   issue,
 } from "../lib/io.mjs";
 import { cacheKey, existingEvidence, requestRevision } from "../lib/cache.mjs";
-import { makeEvidence, chunkDocument } from "../lib/evidence.mjs";
+import { makeEvidence, chunkDocument, indexEvidence } from "../lib/evidence.mjs";
 import { normalizeRequest } from "../lib/validation.mjs";
 import { isMain, optionsFor, required, result, runCli } from "../lib/cli.mjs";
+import { validateCodeSwitch } from "../lib/asr-language-recheck.mjs";
 
 function tool(command) {
   const result = spawnSync(command, ["-version"], {
@@ -64,7 +65,7 @@ async function capabilities(options) {
   };
 }
 // A user-owned preference applies only to its matching explicit CPU runtime and model.
-async function preferredGpu(options, request, preferencePath) {
+export async function preferredGpu(options, request, preferencePath) {
   if (request.policy.asr !== "local" || options["local-asr-gpu-executable"] ||
       !options["local-asr-executable"] || !options["local-asr-model"]) return options;
   try {
@@ -86,6 +87,7 @@ async function preferredGpu(options, request, preferencePath) {
 }
 export async function prepare(options, { asrPreferencePath = path.join(os.homedir(), ".agents", "video-summarizer-asr.json") } = {}) {
   required(options, ["request", "work-dir"]);
+  validateCodeSwitch(options["local-asr-code-switch"]);
   const request = normalizeRequest((await readJson(options.request)).data);
   options = await preferredGpu(options, request, asrPreferencePath);
   return withLock(options["work-dir"], async (workDir) => {
@@ -113,6 +115,7 @@ export async function prepare(options, { asrPreferencePath = path.join(os.homedi
       localAsrExecutable: options["local-asr-executable"],
       localAsrGpuExecutable: options["local-asr-gpu-executable"],
       localAsrModel: options["local-asr-model"],
+      localAsrCodeSwitch: options["local-asr-code-switch"],
       youtubeCapture: options["youtube-capture"],
       tesseractExecutable: options["tesseract-executable"],
       ocrLanguages: options["ocr-languages"],
@@ -168,11 +171,12 @@ export async function prepare(options, { asrPreferencePath = path.join(os.homedi
     await atomicWrite(workDir, "raw/extraction.json", jsonBytes(extracted.raw));
     const bytes = jsonBytes(evidence),
       evidenceSha256 = sha256(bytes);
+    const evidenceIndex = indexEvidence(evidence);
     for (const chunk of evidence.chunks)
       await atomicWrite(
         workDir,
         `chunks/${chunk.id}.json`,
-        jsonBytes(chunkDocument(evidence, chunk)),
+        jsonBytes(chunkDocument(evidence, chunk, evidenceIndex)),
       );
     await atomicWrite(
       workDir,
@@ -238,6 +242,7 @@ if (isMain(import.meta.url))
           "local-asr-executable",
           "local-asr-gpu-executable",
           "local-asr-model",
+          "local-asr-code-switch",
           "youtube-capture",
           "tesseract-executable",
           "ocr-languages",

@@ -97,7 +97,8 @@ test("printed frame heading follows its first frame and provenance follows Sourc
     const headingWords = pages[headingPage];
     const headingIndex = headingWords.indexOf("인용한");
     assert.ok(headingWords.slice(headingIndex + 2).includes("00:00"), `frame heading stranded at ${height}mm: page ${headingPage + 1}`);
-    const provenance = pages.findIndex((words) => words.includes("Provenance"));
+    const provenance = pages.findIndex((words) => words.join("").includes(f.data.reportSha256));
+    assert.ok(provenance >= 0, "the report identity must remain in the printed document details");
     assert.ok(pages[provenance].includes("출처"), `provenance-only page at ${height}mm: page ${provenance + 1}`);
     for (let index = 0; index < 8; index++)
       assert.equal(pages.flat().filter((word) => word === `00:0${index}`).length, index === 0 ? 4 : 2, `lost frame ${index} or its citation`);
@@ -169,7 +170,8 @@ test("the final two analysis limitations stay together with source notes", {
     const pages = pdfPages(stdout);
     const sampling = pages.findIndex((words) => words.includes("SAMPLING_CONTEXT"));
     const coverage = pages.findIndex((words) => words.includes("COVERAGE_CONTEXT"));
-    const provenance = pages.findIndex((words) => words.includes("Provenance"));
+    const provenance = pages.findIndex((words) => words.join("").includes(f.data.reportSha256));
+    assert.ok(provenance >= 0, "the report identity must remain in the printed document details");
     assert.equal(sampling, coverage, `one-item limitation tail at ${height}mm: sampling page ${sampling+1}, coverage page ${coverage+1}`);
     assert.equal(coverage, provenance, "tail context must stay with its source notes");
     observations.push({ height, pages: pages.length, tailPage: coverage + 1 });

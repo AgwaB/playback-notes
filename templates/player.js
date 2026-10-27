@@ -1,5 +1,26 @@
 /* Fixed browser controller. Source text is never evaluated or inserted as HTML. */
 (() => {
+  const contents = document.querySelector(".toc details");
+  if (contents) {
+    const narrow = window.matchMedia("(max-width: 760px)");
+    const setContentsDefault = () => { contents.open = !narrow.matches; };
+    setContentsDefault();
+    narrow.addEventListener("change", setContentsDefault);
+    window.addEventListener("pagehide", () => narrow.removeEventListener("change", setContentsDefault), { once: true });
+  }
+  // Progressive disclosure: without JavaScript every exact citation remains visible.
+  document.querySelectorAll(".citation-toggle").forEach((button) => {
+    const extra = document.getElementById(button.getAttribute("aria-controls"));
+    if (!extra) return;
+    const setExpanded = (expanded) => {
+      extra.hidden = !expanded;
+      button.setAttribute("aria-expanded", String(expanded));
+      button.setAttribute("aria-label", expanded ? button.dataset.hideLabel : button.dataset.showLabel);
+    };
+    setExpanded(false);
+    button.hidden = false;
+    button.addEventListener("click", () => setExpanded(button.getAttribute("aria-expanded") !== "true"));
+  });
   const panel = document.getElementById("source-panel");
   if (!panel) return;
   const slot = document.getElementById("player-slot");

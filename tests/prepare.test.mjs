@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, writeFile, rm, readFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fixture, sampleData } from "./helpers.mjs";
 import { prepare } from "../scripts/prepare.mjs";
@@ -115,6 +115,7 @@ test("cache includes transcript format and explicit ASR executable bytes", async
     first,
   );
   f.request.policy.asr = "local";
+  f.request.transcriptFile = null;
   const executable = path.join(f.root, "explicit-tool"),
     model = path.join(f.root, "model.bin");
   await writeFile(executable, "version one");
@@ -144,6 +145,7 @@ test("configured GPU is selected automatically for the matching local ASR prefer
   const cpu = path.join(f.root, "cpu-exe"), model = path.join(f.root, "speech-model"), gpu = path.join(f.root, "gpu-exe");
   const preference = path.join(f.root, "preference.json");
   await Promise.all([writeFile(cpu, "cpu"), writeFile(model, "model"), writeFile(gpu, "gpu")]);
+  await Promise.all([chmod(cpu, 0o755), chmod(gpu, 0o755)]);
   await writeFile(preference, JSON.stringify({ localAsrExecutable: cpu, localAsrModel: model, localAsrGpuExecutable: gpu }));
   f.request.policy.asr = "local";
   await writeFile(f.args.request, jsonBytes(f.request));

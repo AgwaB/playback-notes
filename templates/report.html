@@ -10,10 +10,10 @@
 <body>
 <a class="skip-link" href="#main">{{ui.skip}}</a>
 <header class="masthead"><div class="eyebrow">VIDEO NOTES · {{modeLabel}}</div><h1>{{{titleHtml}}}</h1>
-<p class="metadata">{{source.displayName}} · {{language}} · {{scopeLabel}} {{scope}}</p>
+<p class="metadata">{{sourceLabel}}{{#if durationLabel}} · {{durationLabel}}{{/if}}</p>
 <div class="toolbar"><button id="open-source" type="button">{{ui.open}}</button>{{#each exports}}{{#if available}}<a href="{{path}}" download>{{format}}</a>{{else}}<span>{{format}} · {{../ui.failedFormat}}</span>{{/if}}{{/each}}</div></header>
 <div class="layout">
-<nav class="toc" aria-label="{{ui.contents}}"><details open><summary>{{ui.contents}}</summary><ol class="topics"><li><a href="#overview">{{ui.overview}}</a></li>{{#each sections}}<li><a href="#section-{{id}}">{{{headingHtml}}}</a></li>{{/each}}<li><a href="#limitations">{{ui.limitations}}</a></li></ol></details></nav>
+<nav class="toc" aria-label="{{ui.contents}}"><details><summary>{{ui.contents}}</summary><ol class="topics"><li><a href="#overview">{{ui.overview}}</a></li>{{#each sections}}<li><a href="#section-{{id}}">{{{headingHtml}}}</a></li>{{/each}}<li><a href="#limitations">{{ui.limitations}}</a></li></ol></details></nav>
 <main id="main">
 <section id="overview" class="overview"><h2>{{ui.overview}}</h2><ul>{{#each summary}}<li>{{> statement}}</li>{{/each}}</ul></section>
 {{#each sections}}<section id="section-{{id}}"><h2>{{{headingHtml}}}</h2>
@@ -30,8 +30,8 @@
 <section id="limitations" class="limitations"><h2>{{ui.limitations}}</h2><ul>{{#each limitationsHtml}}<li>{{{this}}}</li>{{/each}}</ul><p>{{#if print}}{{printPrivacyNotice}}{{else}}{{privacyNotice}}{{/if}}</p></section>
 {{#if citedFrames.length}}<section class="cited-frames"><h2>{{ui.frames}}</h2>{{#each citedFrames}}<figure id="frame-{{id}}"><img src="{{assetPath}}" alt="{{@root.ui.frames}} {{label}}" loading="lazy"><figcaption>{{> citations}}</figcaption></figure>{{/each}}</section>{{/if}}
 {{#if exportIssues.length}}<section class="export-status"><h2>{{ui.errors}}</h2><ul>{{#each exportIssues}}<li>{{message}}</li>{{/each}}</ul></section>{{/if}}
-<div class="source-notes"><section class="references"><h2>{{ui.refs}}</h2><p>{{source.displayName}}{{#if sourceHref}} · <a href="{{sourceHref}}" rel="noopener noreferrer">{{ui.original}}</a>{{/if}}</p></section>
-<footer><p>{{ui.generated}}</p><details{{#if print}} open{{/if}}><summary>Provenance</summary><p>report SHA-256: {{reportSha256}}</p><p>evidence SHA-256: {{evidenceSha256}}</p></details></footer></div>
+<div class="source-notes"><section class="references"><h2>{{ui.refs}}</h2><p>{{sourceLabel}}{{#if sourceHref}} · <a href="{{sourceHref}}" rel="noopener noreferrer">{{ui.original}}</a>{{/if}}</p></section>
+<footer><details{{#if print}} open{{/if}}><summary>{{ui.details}}</summary><p>{{scopeLabel}} {{scope}}</p>{{#if technicalDetails.length}}<ul class="technical-diagnostics">{{#each technicalDetails}}<li><span>{{code}}</span>: {{message}}</li>{{/each}}</ul>{{/if}}<p>report SHA-256: {{reportSha256}}</p><p>evidence SHA-256: {{evidenceSha256}}</p></details></footer></div>
 </main></div>
 <aside id="source-panel" hidden aria-label="{{ui.source}}" data-kind="{{source.playback.kind}}" data-locator="{{playerLocator}}" data-media-type="{{source.mediaType}}" data-duration="{{source.durationMs}}" data-unavailable="{{ui.unavailable}}" data-preparing="{{ui.preparing}}">
 <div class="panel-toolbar"><h2>{{ui.source}}</h2><button id="pin-source" type="button" aria-pressed="false">{{ui.pin}}</button><button id="close-source" type="button">{{ui.close}}</button></div>

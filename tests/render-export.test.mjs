@@ -131,7 +131,7 @@ test("local-only media has human-readable source times, never a fabricated publi
   assert.ok(!htmlDocument(f.bundle).includes("file:///"));
 });
 
-test("adjacent timed citations collapse into one start–end chip; gaps, untimed and frames stay separate", async (t) => {
+test("every exact citation survives disclosure, including adjacent times, gaps and untimed evidence", async (t) => {
   const f = await fixture({
     mutate(d) {
       d.evidence.source.durationMs = 9000;
@@ -180,14 +180,20 @@ test("adjacent timed citations collapse into one start–end chip; gaps, untimed
       /<a class="ts"[^>]*data-anchor="tx-(seg-\d+)"(?:[^>]*data-ms="(\d+)")?[^>]*>([^<]+)<\/a>/g,
     ),
   ].map((m) => [m[1], m[2] ?? null, m[3]]);
-  const summaryChips = chips.slice(0, 3);
+  const summaryChips = chips.slice(0, 5);
   assert.deepEqual(summaryChips, [
-    ["seg-000001", "0", "00:00–00:04"],
-    ["seg-000006", null, "전사 seg-000006"],
+    ["seg-000001", "0", "00:00"],
+    ["seg-000002", "2000", "00:02"],
+    ["seg-000003", "4000", "00:04"],
+    ["seg-000006", null, "전사 6"],
     ["seg-000005", "7000", "00:07"],
   ]);
+  assert.match(html, /class="citation-toggle"[^>]*aria-controls="citation-extra-\d+"/);
   const md = markdownDocument(f.bundle);
-  assert.ok(md.includes("\\[00:00–00:04\\]"));
+  for (const second of [0, 2, 4, 7]) assert.ok(md.includes(`t=${second}s`));
+  assert.ok(md.includes("전사 6"));
+  const print = htmlDocument(f.bundle, [], [], { print: true });
+  for (const second of [0, 2, 4, 7]) assert.ok(print.includes(`t&#x3D;${second}s`));
 });
 
 test("Korean reports localize known extraction warnings and keep unknown ones verbatim", async (t) => {

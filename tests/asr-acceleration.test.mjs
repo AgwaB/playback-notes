@@ -6,10 +6,21 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { fakeTool } from "./fake-tool.mjs";
-import { transcribeWithAcceleration } from "../lib/asr-acceleration.mjs";
+import { gpuFallbackWarning, transcribeWithAcceleration } from "../lib/asr-acceleration.mjs";
 import { extractSource } from "../lib/ingest.mjs";
 
 const srt = "1\n00:00:00,000 --> 00:00:00,500\nCPU transcription.\n";
+
+test("GPU fallback guidance distinguishes unavailable WSL devices without claiming a cause", () => {
+  assert.equal(gpuFallbackWarning(null), null);
+  const wsl = gpuFallbackWarning("gpu-unavailable", { wsl: true, deviceAccessible: false });
+  assert.match(wsl, /CPU/);
+  assert.match(wsl, /\/dev\/dxg.*unavailable or inaccessible/);
+  assert.match(wsl, /sandbox may hide/i);
+  assert.doesNotMatch(gpuFallbackWarning("gpu-unavailable", { wsl: true, deviceAccessible: true }), /\/dev\/dxg/);
+  assert.doesNotMatch(gpuFallbackWarning("gpu-failed"), /WSL|\/dev\/dxg/);
+  assert.match(gpuFallbackWarning("gpu-failed"), /failed during transcription/);
+});
 
 async function setup(t, gpuBody) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "asr-accel-"));
@@ -245,8 +256,30 @@ fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000
   }, { workDir: f.dir, localAsrExecutable: f.cpu, localAsrGpuExecutable: f.gpu, localAsrModel: model });
   assert.equal(result.segments[0].text, "GPU transcription.");
   assert.deepEqual(result.raw.localAsrRuntime, { backend: "cuda", fallback: null });
+  assert.ok(!result.extraction.warnings.some((w) => w.code === "ASR_GPU_FALLBACK"));
   assert.equal(result.extraction.providerVersion, "1.9.5");
   assert.doesNotMatch(JSON.stringify(result.raw.localAsrRuntime), /[\\/]/);
+});
+
+test("real extraction reports a GPU fallback in evidence without disclosing native logs", async (t) => {
+  const f = await setup(t, `console.error('whisper_backend_init_gpu: no GPU found'); process.exit(0);`);
+  const cpu = await fakeTool(path.join(f.dir, "cpu-versioned"), `
+import fs from 'node:fs';
+const args=process.argv.slice(2);
+if (args.includes('--version')) { console.log('whisper.cpp version: 1.9.5'); process.exit(0); }
+fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', ${JSON.stringify(srt)});
+`);
+  const audio = path.join(f.dir, "fallback.wav"), model = path.join(f.dir, "model.bin");
+  await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=1", audio]);
+  await writeFile(model, "offline test model");
+  const result = await extractSource({ source: { kind: "local", value: audio }, transcriptFile: null,
+    policy: { asr: "local", maxDownloadBytes: 1024 * 1024, extractTimeoutMs: 10000, asrTimeoutMs: 10000 },
+  }, { workDir: f.dir, localAsrExecutable: cpu, localAsrGpuExecutable: f.gpu, localAsrModel: model });
+  assert.deepEqual(result.raw.localAsrRuntime, { backend: "cpu", fallback: "gpu-unavailable" });
+  const warning = result.extraction.warnings.find((w) => w.code === "ASR_GPU_FALLBACK");
+  assert.equal(warning?.severity, "warning");
+  assert.match(warning.message, /CPU/);
+  assert.doesNotMatch(warning.message, /no GPU found|fallback\.wav|cpu-versioned/);
 });
 
 

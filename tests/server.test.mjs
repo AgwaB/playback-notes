@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { writeFile, readFile, rm, symlink, mkdir } from "node:fs/promises";
+import { writeFile, readFile, rm, symlink, mkdir, stat, utimes, rename } from "node:fs/promises";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import { get } from "node:http";
 import { createHash } from "node:crypto";
@@ -137,6 +139,87 @@ test("U8: an artifact edited out-of-band after startup is refused (409), not ser
   assert.equal(edited.status, 409);
   await writeFile(file, original);
   assert.equal((await fetch(running.url)).status, 200);
+});
+
+async function copiedMediaFixture(t) {
+  const f = await fixture({ mutate(d) {
+    d.request.policy.copyLocalMedia = true;
+    d.evidence.source.playback = { kind: "native", locator: "media:fixture" };
+  } });
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const source = path.join(f.root, "source.mp4");
+  await writeFile(source, "0123456789abcdef");
+  await writeFile(path.join(f.work, "manifest.json"), jsonBytes({
+    evidenceSha256: f.data.evidenceSha256, sourceId: f.data.evidence.source.id,
+    mediaPath: source, mediaSha256: await fileHash(source),
+  }));
+  await render(f.args);
+  return { ...f, media: path.join(f.out, "media", f.data.evidence.source.id) };
+}
+
+test("copied-media Range/HEAD reuse verified bytes, but same-size edits with restored mtime are rejected", async (t) => {
+  const f = await copiedMediaFixture(t);
+  // Exactly representable timestamps ensure this tests ctime, not incidental mtime drift.
+  await utimes(f.media, 1700000000, 1700000000);
+  const original = await stat(f.media, { bigint: true });
+  const running = await startServer({ root: f.out });
+  t.after(() => running.close());
+  const url = running.url.replace("index.html", `media/${f.data.evidence.source.id}`);
+  const originalRead = fs.createReadStream;
+  let fullReads = 0;
+  const mocked = t.mock.method(fs, "createReadStream", function (file, options) {
+    if (file === f.media && options === undefined) fullReads++;
+    return originalRead.call(this, file, options);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { mocked.mock.restore(); syncBuiltinESMExports(); });
+  for (let i = 0; i < 3; i++) {
+    const response = await fetch(url, { headers: { Range: "bytes=2-5" } });
+    assert.equal(response.status, 206);
+    assert.equal(await response.text(), "2345");
+  }
+  const head = await fetch(url, { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), "");
+  assert.equal(fullReads, 0, "unchanged partial requests must not hash the whole video");
+  await writeFile(f.media, "fedcba9876543210");
+  await utimes(f.media, 1700000000, 1700000000);
+  const edited = await stat(f.media, { bigint: true });
+  assert.equal(edited.size, original.size);
+  assert.equal(edited.mtimeNs, original.mtimeNs);
+  const denied = await fetch(url, { headers: { Range: "bytes=0-0" } });
+  assert.equal(denied.status, 409);
+  await denied.text();
+  assert.equal(fullReads, 1, "changed file metadata must trigger full verification");
+  await writeFile(f.media, "0123456789abcdef");
+  const restored = await fetch(url, { headers: { Range: "bytes=0-0" } });
+  assert.equal(restored.status, 206);
+  assert.equal(await restored.text(), "0");
+  assert.equal(fullReads, 2);
+});
+
+test("copied-media cache follows committed inventory changes and refuses directory-link substitution", async (t) => {
+  const f = await copiedMediaFixture(t);
+  const running = await startServer({ root: f.out });
+  t.after(() => running.close());
+  const url = running.url.replace("index.html", `media/${f.data.evidence.source.id}`);
+  await writeFile(f.media, "changed media bytes");
+  const manifestPath = path.join(f.out, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.media.sha256 = await fileHash(f.media);
+  manifest.media.bytes = (await stat(f.media)).size;
+  await writeFile(manifestPath, jsonBytes(manifest));
+  const changed = await fetch(url, { headers: { Range: "bytes=0-6" } });
+  assert.equal(changed.status, 206);
+  assert.equal(await changed.text(), "changed");
+  await rename(path.join(f.out, "media"), path.join(f.out, "saved-media"));
+  const outside = path.join(f.root, "outside");
+  await mkdir(outside);
+  await writeFile(path.join(outside, f.data.evidence.source.id), "changed media bytes");
+  await symlink(outside, path.join(f.out, "media"), process.platform === "win32" ? "junction" : "dir");
+  const escaped = await fetch(url);
+  assert.equal(escaped.status, 404);
+  await escaped.text();
 });
 
 test("browser-blocked explicit ports are rejected before opening a listener", async () => {
