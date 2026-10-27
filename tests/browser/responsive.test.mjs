@@ -71,12 +71,25 @@ async function scrollToEdge(page, wrap, direction) {
     const remaining = direction > 0 ? before.max - before.left : before.left;
     if (remaining <= 1) return;
     await page.keyboard.press(direction > 0 ? "ArrowRight" : "ArrowLeft");
+    // Native key-scroll distance/animation varies by OS; require movement, not a
+    // particular number of CSS pixels, and let that key's animation finish.
     await page.waitForFunction(({ id, before, direction }) => {
       const e = document.querySelector(`#${id} .diagram-wrap`);
       return direction > 0
-        ? e.scrollLeft >= Math.min(before.left + 30, before.max) - 1
-        : e.scrollLeft <= Math.max(before.left - 30, 0) + 1;
+        ? e.scrollLeft > before.left + 0.5
+        : e.scrollLeft < before.left - 0.5;
     }, { id: await wrap.evaluate((e) => e.closest("figure").id), before, direction });
+    await wrap.evaluate((e) => new Promise((resolve) => {
+      let previous = e.scrollLeft, stable = 0;
+      const sample = () => {
+        const current = e.scrollLeft;
+        stable = Math.abs(current - previous) < 0.1 ? stable + 1 : 0;
+        previous = current;
+        if (stable >= 4) resolve();
+        else requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    }));
   }
   assert.fail("native arrow keys did not reach the diagram edge");
 }
@@ -97,6 +110,7 @@ test("mobile diagrams retain readable label size and their full canvas inside a 
           `${diagram.id} label ${label.text} extends outside the ${diagram.canvas}-unit canvas: ${label.left}–${label.right}`);
       }
       const wrap = page.locator(`#${diagram.id} .diagram-wrap`);
+      await wrap.scrollIntoViewIfNeeded();
       await wrap.focus();
       assert.equal(await wrap.evaluate((e) => e === document.activeElement), true);
       assert.ok(await wrap.getAttribute("aria-labelledby"), "scroll viewport has an accessible name");

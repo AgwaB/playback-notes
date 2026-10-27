@@ -45,7 +45,16 @@ async function nativeFixture(t, { codec = false, absent = false } = {}) {
         }
     },
   });
-  t.after(() => rm(f.root, { recursive: true, force: true }));
+  let running, browser;
+  t.after(async () => {
+    // Close the browser's media connections before waiting for the HTTP server.
+    // Otherwise an active request can hide a failed assertion behind teardown's timeout.
+    try { await browser?.close(); }
+    finally {
+      try { await running?.close(); }
+      finally { await rm(f.root, { recursive: true, force: true }); }
+    }
+  });
   if (!absent) {
     const media = path.join(f.root, codec ? "unsupported.mkv" : "colors.mp4");
     const inputs = codec
@@ -112,14 +121,12 @@ async function nativeFixture(t, { codec = false, absent = false } = {}) {
     );
   }
   await render(f.args);
-  const running = await startServer({ root: f.out });
-  t.after(() => running.close());
-  const browser = await chromium.launch({
+  running = await startServer({ root: f.out });
+  browser = await chromium.launch({
     executablePath,
     headless: true,
     chromiumSandbox: true,
   });
-  t.after(() => browser.close());
   const page = await browser.newPage({
     viewport: { width: 1440, height: 900 },
   });
@@ -222,11 +229,13 @@ test(
   browserTest,
   async (t) => {
     const { page, running } = await nativeFixture(t);
+    t.diagnostic("Keyboard fixture ready");
     await page.goto(running.url);
     const trigger = page.locator('a.ts[data-ms="2000"]').first();
     await trigger.focus();
     await page.keyboard.press("Enter");
     await decoded(page, 2, 1);
+    t.diagnostic("Keyboard citation activation and native seek completed");
     assert.equal(
       await page
         .locator("#close-source")
@@ -272,6 +281,7 @@ test(
       true,
     );
     await page.setViewportSize({ width: 1440, height: 900 });
+    t.diagnostic("Pin control and responsive layout verified");
     await page.locator("#follow-playback").check();
     await page.waitForFunction(
       () =>
@@ -291,6 +301,7 @@ test(
     await page.waitForFunction(
       () => document.getElementById("transcript").scrollTop > 100,
     );
+    t.diagnostic("Manual-scroll cancellation and follow resumption verified");
     await page.locator("#transcript").focus();
     await page.keyboard.press("ArrowUp");
     assert.equal(await page.locator("#follow-playback").isChecked(), false);
@@ -314,6 +325,7 @@ test(
     await page.keyboard.press("Space");
     await page.locator('.transcript-time[data-ms="4000"]').click();
     await decoded(page, 4, 2);
+    t.diagnostic("Reopened source and transcript seek completed");
     await page.keyboard.press("Escape");
     assert.equal(
       await page

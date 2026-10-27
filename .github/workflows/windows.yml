@@ -50,7 +50,9 @@ jobs:
           if [[ '${{ matrix.node }}' == '26' ]]; then
             sudo apt-get install --no-install-recommends -y poppler-utils fonts-noto-cjk
             browser="$(command -v google-chrome || command -v google-chrome-stable)"
-            test -x "$browser"
+            # PDF accepts an explicit regular executable, not /usr/bin's symlink.
+            browser="$(readlink -f "$browser")"
+            test -f "$browser" && test -x "$browser"
             printf 'TEST_BROWSER_EXECUTABLE=%s\n' "$browser" >> "$GITHUB_ENV"
           fi
       - name: Install macOS test tools
@@ -79,7 +81,7 @@ jobs:
       - name: Verify browser test prerequisites
         if: matrix.node == '26'
         run: |
-          node --input-type=module -e "import { accessSync, constants } from 'node:fs'; import { execFileSync } from 'node:child_process'; accessSync(process.env.TEST_BROWSER_EXECUTABLE, constants.X_OK); for (const tool of ['pdftotext', 'pdfinfo']) execFileSync(tool, ['-v'], { stdio: 'inherit' });"
+          node --input-type=module -e "import { accessSync, constants, lstatSync } from 'node:fs'; import { execFileSync } from 'node:child_process'; const browser = process.env.TEST_BROWSER_EXECUTABLE; if (!lstatSync(browser).isFile()) throw new Error('Browser must be a regular file; resolve symlinks first.'); accessSync(browser, constants.X_OK); for (const tool of ['pdftotext', 'pdfinfo']) execFileSync(tool, ['-v'], { stdio: 'inherit' });"
       - name: Browser and PDF regression tests
         if: matrix.node == '26'
         run: npm run test:browser
