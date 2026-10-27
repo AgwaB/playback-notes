@@ -438,8 +438,12 @@ test("fingerprint reads shared runtime files once per call and re-reads changed 
     const fingerprint = async () => {
       reads.length = 0;
       const result = await ingestionFingerprint(input, opts);
-      for (const file of [media, cpu, model, library])
-        assert.equal(reads.filter((read) => read === fs.realpathSync(file)).length, 1, `${path.basename(file)} is read once`);
+      for (const file of [media, cpu, model, library]) {
+        // Match regularFile's native canonical path: realpathSync's JS fallback can
+        // preserve Windows TEMP casing or short names that async realpath expands.
+        const canonical = await realpath(file);
+        assert.equal(reads.filter((read) => read === canonical).length, 1, `${path.basename(file)} is read once`);
+      }
       assert.equal(reads.length, 4, "aliases do not cause a second file read");
       return result;
     };

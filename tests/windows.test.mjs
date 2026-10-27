@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -30,7 +30,8 @@ test("Windows extraction retains native tool lookup and private temp/profile pat
 });
 
 test("portable asset paths reject NTFS streams, devices and Windows aliases before IO", async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "windows-path-"));
+  // This cross-platform test needs a real directory, not macOS's /var alias.
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "windows-path-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const input = path.join(root, "input.bin");
   const output = path.join(root, "public");

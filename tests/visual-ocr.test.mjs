@@ -710,23 +710,24 @@ test("duplicate-PTS scene source (round-2 fixture): one image per metadata recor
     path.join(root, "ocr-unique"),
     `const n=/frame-(\\d+)/.exec(process.argv[2])?.[1];process.stdout.write("frame text number "+n+"\\n");\n`,
   );
-  const result = await extractSource(
-    normalizeRequest({
-      schemaVersion: 1,
-      source: { kind: "local", value: fixture },
-      mode: "briefing",
-      outputLanguage: "ko",
-      formats: ["html"],
-      transcriptFile: srt,
-      policy: { asr: "off", visual: "local-ocr" },
-    }),
-    {
-      workDir: path.join(jobs, "dup"),
-      tesseractExecutable: ocr,
-      ocrLanguages: "eng",
-      ocrSceneThreshold: 0.02,
-    },
-  );
+  const duplicateRequest = normalizeRequest({
+    schemaVersion: 1,
+    source: { kind: "local", value: fixture },
+    mode: "briefing",
+    outputLanguage: "ko",
+    formats: ["html"],
+    transcriptFile: srt,
+    policy: { asr: "off", visual: "local-ocr" },
+  });
+  const duplicateOptions = {
+    tesseractExecutable: ocr,
+    ocrLanguages: "eng",
+    ocrSceneThreshold: 0.02,
+  };
+  const result = await extractSource(duplicateRequest, {
+    ...duplicateOptions,
+    workDir: path.join(jobs, "dup"),
+  });
   assert.equal(
     result.raw.visualOcr.sampled,
     12,
@@ -751,6 +752,23 @@ test("duplicate-PTS scene source (round-2 fixture): one image per metadata recor
     new Set(lum).size >= 2,
     "distinct images were stored, not one repeated frame",
   );
+  // Small caps exercise FFmpeg filter read-ahead, including stopping inside repeated
+  // timestamps: every retained image must keep its leading source timestamp.
+  for (const cap of [1, 4]) {
+    const capped = await extractSource(duplicateRequest, {
+      ...duplicateOptions,
+      workDir: path.join(jobs, `dup-cap-${cap}`),
+      ocrMaxFrames: cap,
+    });
+    assert.equal(capped.raw.visualOcr.sampled, cap);
+    assert.deepEqual(
+      capped.frames.map((frame) => frame.timestampMs),
+      result.frames.slice(0, cap).map((frame) => frame.timestampMs),
+    );
+    assert.equal(new Set(capped.frames.map((frame) => frame.sha256)).size, cap,
+      "distinct source images are retained even when their timestamps are equal");
+    assert.equal(capped.raw.visualOcr.coverage.complete, false);
+  }
 });
 
 test("interval sampling keeps real source timestamps, survives quoted and Unicode work directories, and a caption returning after the window is reported again", async () => {

@@ -4,14 +4,15 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { fakeTool } from "./fake-tool.mjs";
 import { review } from "../scripts/asr-review.mjs";
 
 const exec = promisify(execFile);
 
 async function setup(t, { badTimes = false } = {}) {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "asr-review-"));
+  // macOS temporary paths may begin with /var, a symlink to /private/var.
+  const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), "asr-review-")));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const source = path.join(dir, "source.wav");
   await exec("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=12", "-ac", "1", "-ar", "16000", source]);
