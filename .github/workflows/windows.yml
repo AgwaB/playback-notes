@@ -45,6 +45,15 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
+          # Azure's regional mirror can transfer continuously at ~100 kB/s, avoiding
+          # apt's inactivity timeout. Prefer Ubuntu HTTPS while retaining fallbacks.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i \
+              -e '\|^https://archive\.ubuntu\.com/ubuntu/|s/priority:2/priority:1/' \
+              -e '\|^http://azure\.archive\.ubuntu\.com/ubuntu/|s/priority:1/priority:2/' \
+              /etc/apt/apt-mirrors.txt
+            cat /etc/apt/apt-mirrors.txt
+          fi
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y ffmpeg
           if [[ '${{ matrix.node }}' == '26' ]]; then
