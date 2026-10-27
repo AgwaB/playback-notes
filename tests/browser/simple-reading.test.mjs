@@ -68,6 +68,8 @@ test("mobile reader starts with closed contents and compact, touch-sized citatio
   assert.equal(await toggle.isVisible(), false);
   await page.emulateMedia({ media: "screen" });
   await page.setViewportSize({ width: 1280, height: 900 });
+  // The viewport update can resolve before its matchMedia change handler runs.
+  await page.waitForFunction(() => document.querySelector(".toc details").open);
   assert.equal(await page.locator(".toc details").evaluate((d) => d.open), true);
   if (process.env.TEST_SCREENSHOT_DIR)
     await page.screenshot({ path: path.join(process.env.TEST_SCREENSHOT_DIR, "reader-desktop.png"), fullPage: true });
