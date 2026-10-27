@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -14,7 +14,9 @@ const execute = promisify(execFile);
 test("Windows OCR explicitly selects adjacent tessdata under a Korean executable path", {
   skip: process.platform !== "win32",
 }, async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "windows-ocr 한글 "));
+  // Windows TEMP can use short names or different casing; the worker canonicalizes
+  // the executable before selecting adjacent tessdata, so compare canonical paths.
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "windows-ocr 한글 ")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const toolDir = path.join(root, "OCR 도구");
   const dataDir = path.join(toolDir, "tessdata");
