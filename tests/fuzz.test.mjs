@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { fromMarkdown } from "mdast-util-from-markdown";
-import { parseUserTranscript } from "../lib/ingest-worker.mjs";
+import {
+  parseUserTranscript,
+  srtCueText,
+  vttCueText,
+} from "../lib/ingest-worker.mjs";
 import { htmlTranscriptText, parsePodcastJson } from "../lib/podcast.mjs";
 import { htmlDocument } from "../lib/rendering.mjs";
 import { markdownDocument } from "../lib/markdown.mjs";
@@ -96,7 +100,13 @@ test("well-formed generated subtitles round-trip their cue times and text", () =
       value.map((s) => [s.startMs, s.endMs]),
       cues.map((c) => [c.start, c.end]),
     );
-    value.forEach((s, n) => assert.equal(s.text.trim(), cues[n].text.trim()));
+    // Cue formatting (WebVTT spans, SubRip tags) is dropped from the text, nothing else.
+    value.forEach((s, n) =>
+      assert.equal(
+        s.text,
+        vtt ? vttCueText(cues[n].text).text : srtCueText(cues[n].text),
+      ),
+    );
   }
 });
 

@@ -8,7 +8,7 @@ import {
 const cues =
   "00:00.500 --> 00:02.000\n<v Alice>Hello <b>world</b>.\n\n00:02.500 --> 00:04.000\nSecond.\n";
 
-test("WebVTT STYLE, REGION and NOTE blocks are skipped; cue text stays literal", () => {
+test("WebVTT STYLE, REGION and NOTE blocks are skipped; a voice span names the speaker", () => {
   for (const prefix of [
     "STYLE\n::cue { color: red }\n\n",
     "REGION\nid:fred width:40%\n\n",
@@ -19,7 +19,7 @@ test("WebVTT STYLE, REGION and NOTE blocks are skipped; cue text stays literal",
     assert.deepEqual(
       segments.map((s) => [s.startMs, s.endMs, s.text, s.speaker]),
       [
-        [500, 2000, "<v Alice>Hello <b>world</b>.", null],
+        [500, 2000, "Hello world.", "Alice"],
         [2500, 4000, "Second.", null],
       ],
       prefix,
@@ -44,26 +44,109 @@ test("WebVTT cue identifiers of any form are skipped, not parsed as cue text", (
   }
 });
 
-test("transcripts decode as UTF-8 or BOM-marked UTF-16; legacy code pages are refused", () => {
+test("transcripts decode as UTF-8 or BOM-marked UTF-16 without a guess", () => {
   const text = "1\r\n00:00:00,000 --> 00:00:01,000\r\n안녕하세요\r\n";
   const utf16be = Buffer.from(text, "utf16le").swap16();
-  for (const bytes of [
-    Buffer.from(text),
-    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text)]),
-    Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]),
-    Buffer.concat([Buffer.from([0xfe, 0xff]), utf16be]),
+  for (const [bytes, encoding] of [
+    [Buffer.from(text), "utf-8"],
+    [Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text)]), "utf-8"],
+    [Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]), "utf-16le"],
+    [Buffer.concat([Buffer.from([0xfe, 0xff]), utf16be]), "utf-16be"],
   ])
-    assert.equal(decodeTranscriptText(bytes), text);
-  // "안녕" in EUC-KR/CP949 is not valid UTF-8.
-  const cp949 = Buffer.concat([
-    Buffer.from("1\n00:00:00,000 --> 00:00:01,000\n"),
-    Buffer.from([0xbe, 0xc8, 0xb3, 0xe7]),
-    Buffer.from("\n"),
+    assert.deepEqual(decodeTranscriptText(bytes), { text, encoding, detected: false });
+});
+
+test("legacy code pages are detected like mpv does, and too little evidence is refused", () => {
+  const cue = "1\n00:00:01,000 --> 00:00:04,000\n";
+  // EUC-KR/CP949 and Shift_JIS bytes of a Korean and a Japanese sentence (iconv output).
+  const korean = Buffer.concat([
+    Buffer.from(cue),
+    Buffer.from(
+      "bec8b3e7c7cfbcbcbfe42e20bfc0b4c320c8b8c0c7bfa1bcadb4c220b4d9c0bd20bad0b1e220c3e2bdc320c0cfc1a4c0bb20b3edc0c7c7dfbdc0b4cfb4d92e0a",
+      "hex",
+    ),
   ]);
-  assert.throws(() => decodeTranscriptText(cp949), {
+  const japanese = Buffer.concat([
+    Buffer.from(cue),
+    Buffer.from(
+      "82b182f182c982bf82cd81428da193fa82cd89ef8b6382cc93fa92f682c982c282a282c4986282b582dc82b781420a",
+      "hex",
+    ),
+  ]);
+  assert.deepEqual(decodeTranscriptText(korean), {
+    text: `${cue}안녕하세요. 오늘 회의에서는 다음 분기 출시 일정을 논의했습니다.\n`,
+    encoding: "euc-kr",
+    language: "ko",
+    detected: true,
+  });
+  assert.equal(decodeTranscriptText(japanese).encoding, "shift_jis");
+  assert.match(decodeTranscriptText(japanese).text, /今日は会議の日程について話します。/);
+  // "안녕" alone (4 bytes) is not enough to tell code pages apart.
+  const short = Buffer.concat([Buffer.from(cue), Buffer.from([0xbe, 0xc8, 0xb3, 0xe7, 0x0a])]);
+  assert.throws(() => decodeTranscriptText(short), {
     code: "INVALID_CONTRACT",
     detail: "transcript-encoding-unsupported",
   });
+});
+
+test("cue formatting is dropped: WebVTT spans and references, SubRip tags and ASS overrides", () => {
+  const vtt = parseUserTranscript(
+    "WEBVTT\n\n00:00.000 --> 00:01.000\n<v.loud Esme>It's a <c.red>blue</c> apple &amp; <00:00.500>tree!\n\n00:01.000 --> 00:02.000\n<v Mary>No way!</v> <v Bob>Yes.</v>\n\n00:02.000 --> 00:03.000\na &lt;b&gt; tag is text\n",
+    ".vtt",
+  );
+  assert.deepEqual(
+    vtt.map((s) => [s.speaker, s.text]),
+    [
+      ["Esme", "It's a blue apple & tree!"],
+      [null, "No way! Yes."],
+      [null, "a <b> tag is text"],
+    ],
+  );
+  const srt = parseUserTranscript(
+    '1\n00:00:00,000 --> 00:00:01,000\n{\\an8}<i>Hello</i> <font color="#ff0">there</font>, 3 < 4\n',
+    ".srt",
+  );
+  assert.deepEqual(srt.map((s) => [s.speaker, s.text]), [[null, "Hello there, 3 < 4"]]);
+});
+
+test("podcast transcripts carry the speaker until it changes (Podcasting 2.0 VTT and SRT)", () => {
+  const vtt = parseUserTranscript(
+    "WEBVTT\n\n00:00.000 --> 00:01.000\n<v John>Podcasting 2.0 is changing the game.\n\n00:01.000 --> 00:02.000\n<v Tom>Yeah, absolutely.\n\n00:02.000 --> 00:03.000\nIt's amazing.\n",
+    ".vtt",
+    { podcast: true },
+  );
+  assert.deepEqual(vtt.map((s) => s.speaker), ["John", "Tom", "Tom"]);
+  const srt = (cards) =>
+    cards.map((text, i) => `${i + 1}\n00:00:0${i},000 --> 00:00:0${i + 1},000\n${text}\n`).join("\n");
+  const cards = [
+    "Sarah: In today's episode, you'll learn",
+    "whether you should have a trailer.",
+    "Note: this card names no speaker",
+    "Gillian: Hi Buzzsprout, Gillian here",
+    "Sarah: Welcome.",
+    "Gillian: Thanks.",
+  ];
+  const podcast = parseUserTranscript(srt(cards), ".srt", { podcast: true });
+  assert.deepEqual(
+    podcast.map((s) => [s.speaker, s.text]),
+    [
+      ["Sarah", "In today's episode, you'll learn"],
+      ["Sarah", "whether you should have a trailer."],
+      ["Sarah", "Note: this card names no speaker"],
+      ["Gillian", "Hi Buzzsprout, Gillian here"],
+      ["Sarah", "Welcome."],
+      ["Gillian", "Thanks."],
+    ],
+  );
+  // Outside podcasts, a user's SRT keeps "Name:" as text and VTT voices do not carry over.
+  assert.equal(parseUserTranscript(srt(cards), ".srt")[0].text, cards[0]);
+  assert.deepEqual(
+    parseUserTranscript(
+      "WEBVTT\n\n00:00.000 --> 00:01.000\n<v Tom>Hi.\n\n00:01.000 --> 00:02.000\nNext.\n",
+      ".vtt",
+    ).map((s) => s.speaker),
+    ["Tom", null],
+  );
 });
 
 test("a cue whose text starts with the word STYLE is still a cue", () => {

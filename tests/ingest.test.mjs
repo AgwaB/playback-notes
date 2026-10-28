@@ -186,14 +186,15 @@ test("real generated video + user SRT returns the ingestion shape without IDs or
   assert.deepEqual(await readFile(media), original);
 });
 
-test("real generated audio + VTT reuses subtitle without interpreting voice/HTML text", async () => {
+test("real generated audio + VTT takes the voice span as speaker and drops cue formatting", async () => {
   const result = await extractSource(
     request({ source: { kind: "local", value: audio }, transcriptFile: vtt }),
     { workDir: jobs },
   );
   assert.equal(result.source.mediaType, "audio");
-  assert.equal(result.segments[0].speaker, null);
-  assert.equal(result.segments[0].text, "<v Speaker>Untrusted <b>text</b>.");
+  assert.equal(result.segments[0].speaker, "Speaker");
+  assert.equal(result.segments[0].text, "Untrusted text.");
+  assert.match(result.raw.userTranscript, /<v Speaker>/, "the raw file is kept as supplied");
 });
 
 test("TXT timestamps stay null and untrusted instructions remain text", async () => {

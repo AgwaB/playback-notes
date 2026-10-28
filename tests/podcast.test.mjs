@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   chooseTranscript,
   feedTranscripts,
+  htmlTranscriptSegments,
   htmlTranscriptText,
   parsePodcastJson,
   podcastLink,
@@ -198,6 +199,24 @@ test("HTML transcripts become untimed paragraphs without scripts or markup", () 
     "<html><body><h2>Transcript</h2><p>Alice: Hello <b>there</b>.</p><script>steal()</script><ul><li>Bob: Hi.</li></ul></body></html>",
   );
   assert.equal(text, "Transcript\n\nAlice: Hello there.\n\nBob: Hi.");
+});
+
+test("Podcasting 2.0 HTML transcripts: <cite> names the speaker of the following paragraphs, untimed", () => {
+  const segments = htmlTranscriptSegments(
+    "<cite>Kevin:</cite> <time>0:00</time> <p> We have an update planned </p> <cite>Alban :</cite> <time>0:09</time> <p>You're triggering Tom.</p><p>Second <b>paragraph</b>.</p><script>steal()</script>",
+  );
+  assert.deepEqual(segments, [
+    { startMs: null, endMs: null, text: "We have an update planned", speaker: "Kevin" },
+    { startMs: null, endMs: null, text: "You're triggering Tom.", speaker: "Alban" },
+    { startMs: null, endMs: null, text: "Second paragraph.", speaker: "Alban" },
+  ]);
+  assert.deepEqual(
+    htmlTranscriptSegments("<body>Plain text only.\n\nSecond block.</body>").map((s) => [s.speaker, s.text]),
+    [
+      [null, "Plain text only."],
+      [null, "Second block."],
+    ],
+  );
 });
 
 test("an unreadable feed or transcript leaves the episode audio to local ASR, with a warning", async () => {

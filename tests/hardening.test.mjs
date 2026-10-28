@@ -2,7 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, writeFile, readdir, mkdir, rm } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  readdir,
+  mkdir,
+  rm,
+  stat,
+  utimes,
+} from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fixture, sampleData } from "./helpers.mjs";
@@ -193,6 +201,39 @@ test("disk failure during export is incomplete, has no failed download link and 
     assert.ok(!(await fsp.readdir(out)).some(n=>n.endsWith('.tmp') || n==='.write.lock'));
   `,
   );
+});
+
+test("a lock its writer stopped refreshing is taken over; a fresh one and another writer's are kept", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const lock = path.join(f.out, ".write.lock");
+  await writeFile(lock, "");
+  const old = new Date(Date.now() - 60_000);
+  await utimes(lock, old, old);
+  const result = await withLock(f.out, async () => ({ issues: [] }));
+  assert.deepEqual(result.issues.map((i) => i.code), ["STALE_LOCK_RECOVERED"]);
+  assert.ok(!(await readdir(f.out)).includes(".write.lock"));
+  await writeFile(lock, "");
+  await assert.rejects(withLock(f.out, () => assert.fail("entered a live lock")), {
+    code: "BUSY",
+  });
+  await rm(lock);
+  // The holder refreshes its lock; a writer that took it over keeps it at release.
+  await assert.rejects(
+    withLock(
+      f.out,
+      async () => {
+        const before = (await stat(lock)).mtimeMs;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        assert.ok((await stat(lock)).mtimeMs > before, "refreshed while held");
+        await writeFile(lock, "another writer");
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      },
+      { staleMs: 1000, updateMs: 40 },
+    ),
+    { code: "LOCK_COMPROMISED" },
+  );
+  assert.equal(await readFile(lock, "utf8"), "another writer");
 });
 
 test("lock rejects concurrent writers and releases after cancellation rejection", async (t) => {
