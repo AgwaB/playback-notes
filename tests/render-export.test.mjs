@@ -189,8 +189,13 @@ test("every exact citation survives disclosure, including adjacent times, gaps a
     ["seg-000005", "7000", "00:07"],
   ]);
   assert.match(html, /class="citation-toggle"[^>]*aria-controls="citation-extra-\d+"/);
+  // Markdown writes the consecutive run 00:00, 00:02, 00:04 as one range that links to
+  // its start; the gap before 00:07 and the untimed row stay separate.
   const md = markdownDocument(f.bundle);
-  for (const second of [0, 2, 4, 7]) assert.ok(md.includes(`t=${second}s`));
+  const summary = md.split("\n").find((line) => line.startsWith("- Use only"));
+  assert.ok(summary.includes("[\\[00:00–00:04\\]](https://"));
+  assert.ok(summary.includes("t=0s") && summary.includes("t=7s"));
+  assert.ok(!summary.includes("t=2s") && !summary.includes("t=4s"));
   assert.ok(md.includes("Transcript 6"));
   const print = htmlDocument(f.bundle, [], [], { print: true });
   for (const second of [0, 2, 4, 7]) assert.ok(print.includes(`t&#x3D;${second}s`));

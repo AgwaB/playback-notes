@@ -31,7 +31,7 @@ Start from `scripts/scaffold.mjs --request "$JOB/request.json" --evidence "$JOB/
 { "text": "Plain text, not HTML.", "attribution": "interpretation", "citations": [{ "kind": "segment", "id": "seg-000002" }] }
 ```
 
-`attribution` is exactly `source` or `interpretation`. Each substantive statement needs at least one citation. Cite the contiguous transcript run a statement rests on (one or two runs, not every segment it touches). Every citation stays its own link: in the HTML the first is shown and the rest fold behind a “more” disclosure, while print, Markdown and no-JavaScript reading list them all. A citation is a `segment` or an inspected `frame` ID; its timestamp is resolved from evidence, not authored independently. Inference is allowed but visibly labeled; it still needs grounding.
+`attribution` is exactly `source` or `interpretation`. Each substantive statement needs at least one citation. Cite the contiguous transcript run a statement rests on (one or two runs, not every segment it touches). Every citation stays its own link in HTML: the first is shown and the rest fold behind a “more” disclosure, while print and no-JavaScript reading list them all. Markdown writes a run of consecutive timed segments as one range, such as `[01:32–01:41]`, linked to its start. A citation is a `segment` or an inspected `frame` ID; its timestamp is resolved from evidence, not authored independently. Inference is allowed but visibly labeled; it still needs grounding.
 
 ## Blocks
 
