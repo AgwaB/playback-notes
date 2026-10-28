@@ -48,7 +48,12 @@ async function isolatedInstaller(t) {
   await mkdir(path.join(source, "scripts"), { recursive: true });
   await mkdir(path.join(source, "lib"));
   const repo = fileURLToPath(new URL("..", import.meta.url));
-  for (const part of ["scripts/install.mjs", "lib/cli.mjs", "lib/io.mjs"])
+  for (const part of [
+    "scripts/install.mjs",
+    "lib/cli.mjs",
+    "lib/io.mjs",
+    "lib/failure-messages.mjs",
+  ])
     await cp(path.join(repo, part), path.join(source, part));
   await writeFile(
     path.join(source, "package.json"),

@@ -507,6 +507,101 @@ fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000
   );
 });
 
+test("local ASR coverage: untranscribed sound and extra audio tracks are reported, nothing is added", async (t) => {
+  const f = await acquisition(t);
+  const tracks = path.join(f.root, "two-tracks.mkv");
+  await execute(
+    "ffmpeg",
+    [
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      f.request.source.value,
+      "-i",
+      f.request.source.value,
+      "-map",
+      "0:a",
+      "-map",
+      "1:a",
+      "-c:a",
+      "pcm_s16le",
+      "-metadata:s:a:0",
+      "language=kor",
+      "-metadata:s:a:1",
+      "language=eng",
+      tracks,
+    ],
+    { timeout: 30000 },
+  );
+  // Whisper "hears" only the first half second of a six-second tone.
+  const cpu = await fakeTool(
+    path.join(f.root, "cpu-asr"),
+    `
+import fs from 'node:fs';
+const args = process.argv.slice(2);
+if (args.includes('--version')) { console.log('whisper.cpp version: 1.9.5'); process.exit(0); }
+fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000 --> 00:00:00,500\\nHello there.\\n');
+`,
+  );
+  const model = path.join(f.root, "model.bin");
+  await writeFile(model, "model");
+  f.request.source = { kind: "local", value: tracks };
+  f.request.transcriptFile = null;
+  f.request.policy.asr = "local";
+  await writeFile(f.args.request, jsonBytes(f.request));
+  const result = await prepare(
+    { ...f.args, "local-asr-executable": cpu, "local-asr-model": model },
+    { asrPreferencePath: path.join(f.root, "no-preference.json") },
+  );
+  assert.equal(result.status, "ok");
+  const issues = Object.fromEntries(result.issues.map((i) => [i.code, i.message]));
+  assert.match(issues.ASR_UNTRANSCRIBED_AUDIO, /^1 stretch with sound has no transcript: 00:01–00:06\./);
+  assert.match(issues.MULTIPLE_AUDIO_TRACKS, /2 audio tracks \(kor, eng\)/);
+  const evidence = (await readJson(path.join(f.work, "evidence.json"))).data;
+  assert.deepEqual(evidence.segments.map((s) => s.text), ["Hello there."]);
+  const raw = (await readJson(path.join(f.work, "raw", "extraction.json"))).data;
+  assert.deepEqual(raw.localAsrCoverage.untranscribed, [
+    { startMs: 1000, endMs: 6000, soundMs: 5000 },
+  ]);
+});
+
+test("a failing ASR runtime is reported as the runtime, not as an unsupported source", async (t) => {
+  const f = await acquisition(t);
+  const cpu = await fakeTool(path.join(f.root, "broken-asr"), "process.exit(3);");
+  const model = path.join(f.root, "model.bin");
+  await writeFile(model, "not a model");
+  f.request.transcriptFile = null;
+  f.request.policy.asr = "local";
+  await writeFile(f.args.request, jsonBytes(f.request));
+  await assert.rejects(
+    prepare(
+      { ...f.args, "local-asr-executable": cpu, "local-asr-model": model },
+      { asrPreferencePath: path.join(f.root, "no-preference.json") },
+    ),
+    (error) =>
+      error.code === "CAPABILITY_MISSING" &&
+      error.detail === "asr-runtime-failed" &&
+      /the source itself was not rejected/i.test(error.message),
+  );
+});
+
+test("CLI failures before extraction name their cause without echoing the path", async (t) => {
+  const f = await acquisition(t);
+  f.request.source = { kind: "local", value: path.join(f.root, "typo.mp3") };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  const failed = await execute(
+    process.execPath,
+    ["scripts/prepare.mjs", "--request", f.args.request, "--work-dir", f.work],
+    { timeout: 30000 },
+  ).catch((error) => error);
+  const envelope = JSON.parse(failed.stdout);
+  assert.equal(envelope.issues[0].code, "UNSAFE_PATH");
+  assert.match(envelope.issues[0].message, /Cause: The path does not exist/);
+  assert.ok(!failed.stdout.includes("typo.mp3"));
+});
+
 test("CLI default-ASR-off failure asks for user input and does not disclose source paths", async (t) => {
   const f = await acquisition(t);
   f.request.transcriptFile = null;

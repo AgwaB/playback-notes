@@ -185,7 +185,12 @@ test("invalid ranges fail and a missing GPU preference falls back to CPU", async
       { ...f.options, "end-ms": "121001" },
       { asrPreferencePath: f.preference },
     ),
-    { code: "INVALID_CONTRACT" },
+    // An AppError, so the CLI shows this fixed text instead of a generic failure.
+    {
+      code: "INVALID_CONTRACT",
+      name: "AppError",
+      message: "The review range must be 1–120 seconds and end after it starts.",
+    },
   );
   await writeFile(
     f.preference,

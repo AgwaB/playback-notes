@@ -29,6 +29,19 @@ test("Windows extraction retains native tool lookup and private temp/profile pat
   assert.match(stdout, /^ffmpeg version/);
 });
 
+test("a .cmd wrapper configured as a tool is refused with its own cause", {
+  skip: process.platform !== "win32",
+}, async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "windows wrapper "));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const wrapper = path.join(root, "whisper.cmd");
+  await writeFile(wrapper, "@echo off\r\nexit /b 0\r\n");
+  await assert.rejects(
+    runLocalTool(wrapper, ["--help"], { workDir: root, timeoutMs: 10000 }),
+    { code: "CAPABILITY_MISSING", detail: "windows-script-wrapper" },
+  );
+});
+
 test("portable asset paths reject NTFS streams, devices and Windows aliases before IO", async (t) => {
   // This cross-platform test needs a real directory, not macOS's /var alias.
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "windows-path-")));

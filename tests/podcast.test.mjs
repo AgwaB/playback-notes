@@ -11,6 +11,8 @@ import {
 import { publicUrl } from "../lib/validation.mjs";
 import { FAILURE_DETAILS } from "../lib/ingest.mjs";
 
+import { publishedPodcastTranscript } from "../lib/ingest-worker.mjs";
+
 // Offline stand-in for the guarded network: canned bodies by URL, recording requests.
 function fakeNetwork(bodies) {
   const requested = [];
@@ -196,4 +198,45 @@ test("HTML transcripts become untimed paragraphs without scripts or markup", () 
     "<html><body><h2>Transcript</h2><p>Alice: Hello <b>there</b>.</p><script>steal()</script><ul><li>Bob: Hi.</li></ul></body></html>",
   );
   assert.equal(text, "Transcript\n\nAlice: Hello there.\n\nBob: Hi.");
+});
+
+test("an unreadable feed or transcript leaves the episode audio to local ASR, with a warning", async () => {
+  const episode = {
+    feedUrl: "https://feeds.example.org/show.xml",
+    guid: "ep-7-guid",
+    enclosureUrl: "https://media.example.org/ep7.mp3",
+  };
+  const policy = { transcriptLanguages: [], maxDownloadBytes: 1000000 };
+  // A feed that answers 404 (the show moved hosts) is not a reason to fail the episode.
+  const missing = await publishedPodcastTranscript(fakeNetwork({}), episode, policy);
+  assert.equal(missing.segments, null);
+  assert.deepEqual(missing.warnings.map((w) => w.code), ["PODCAST_FEED_UNAVAILABLE"]);
+  const feed = `<rss xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel><item><guid>ep-7-guid</guid>
+<podcast:transcript url="https://feeds.example.org/ep7.vtt" type="text/vtt"/></item></channel></rss>`;
+  const broken = await publishedPodcastTranscript(
+    fakeNetwork({ [episode.feedUrl]: feed, "https://feeds.example.org/ep7.vtt": "WEBVTT\n\nnot a cue" }),
+    episode,
+    policy,
+  );
+  assert.equal(broken.segments, null);
+  assert.deepEqual(broken.warnings.map((w) => w.code), ["PODCAST_TRANSCRIPT_UNUSABLE"]);
+  const good = await publishedPodcastTranscript(
+    fakeNetwork({
+      [episode.feedUrl]: feed,
+      "https://feeds.example.org/ep7.vtt": "WEBVTT\n\n00:00.000 --> 00:01.000\nHello.\n",
+    }),
+    episode,
+    policy,
+  );
+  assert.equal(good.segments[0].text, "Hello.");
+  assert.deepEqual(good.warnings, []);
+  // Being offline or over budget still stops the job: the audio would fail the same way.
+  const offline = {
+    async text() {
+      throw Object.assign(new Error("offline"), { code: "NETWORK_UNAVAILABLE" });
+    },
+  };
+  await assert.rejects(publishedPodcastTranscript(offline, episode, policy), {
+    code: "NETWORK_UNAVAILABLE",
+  });
 });
