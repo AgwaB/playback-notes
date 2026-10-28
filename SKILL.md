@@ -1,6 +1,6 @@
 ---
 name: playback-notes
-description: Turn a video or audio recording (a URL or local file) into a grounded briefing or deep-dive whose claims link to their moments in the recording, delivered in the formats the user chooses (HTML, Markdown and/or PDF). Use when the user asks to understand, summarize or deeply analyze a video, podcast episode, lecture, meeting or other recording. The host agent does the reasoning; bundled scripts only acquire evidence, validate and export.
+description: Turn a video or audio recording (a YouTube link, an Apple Podcasts episode, a direct media URL or a local file) into a grounded briefing or deep-dive whose claims link to their moments in the recording, delivered in the formats the user chooses (HTML, Markdown and/or PDF). Use when the user asks to understand, summarize or deeply analyze a video, YouTube link, podcast episode, lecture, talk, meeting or other recording. The host agent does the reasoning; bundled scripts only acquire evidence, validate and export.
 compatibility: A host agent with file/shell tools, Node.js 24.15 or later in the 24.x line, or Node.js 26+, and installed npm dependencies. PDF requires an explicitly selected local Chromium browser. Optional local media/ASR capabilities are checked before use.
 ---
 
