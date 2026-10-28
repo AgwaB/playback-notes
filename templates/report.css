@@ -244,6 +244,11 @@ blockquote {
   border-left: 3px solid var(--accent);
   background: var(--surface-2);
 }
+.quote-speaker {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
 .table-wrap {
   overflow-x: auto;
   margin: 1rem 0;

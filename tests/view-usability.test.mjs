@@ -138,3 +138,36 @@ test("the masthead names the source medium: video by default, audio for audio-on
   assert.equal(await masthead("audio"), "AUDIO NOTES · Briefing");
   assert.equal(await masthead("unknown"), "VIDEO NOTES · Briefing");
 });
+
+test("a quote names its speaker only when every cited segment has that same speaker", async (t) => {
+  const f = await fixture({
+    mutate(d) {
+      const [first, second] = d.evidence.segments;
+      first.speaker = "Alice <b>Host</b>";
+      second.speaker = "Bob";
+      const quote = (segments) => ({
+        type: "quote",
+        verbatim: true,
+        statement: {
+          text: segments[0].text,
+          attribution: "source",
+          citations: segments.map((s) => ({ kind: "segment", id: s.id })),
+        },
+      });
+      d.report.sections[0].blocks.push(quote([first]), quote([first, second]));
+    },
+  });
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const document = new JSDOM(htmlDocument(f.bundle)).window.document;
+  const footers = [...document.querySelectorAll("blockquote")].map(
+    (q) => q.querySelector(".quote-speaker")?.textContent ?? null,
+  );
+  assert.deepEqual(footers.slice(-2), ["— Alice <b>Host</b>", null]);
+  assert.equal(document.querySelectorAll(".quote-speaker b").length, 0, "speaker is text");
+  const markdown = markdownDocument(f.bundle);
+  assert.equal(
+    markdown.match(/^> — Alice/gm)?.length,
+    footers.filter((footer) => footer?.startsWith("— Alice")).length,
+  );
+  assert.ok(!/^> — Bob/m.test(markdown));
+});

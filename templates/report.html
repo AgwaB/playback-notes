@@ -21,7 +21,7 @@
 {{#if (eq type "paragraph")}}<p>{{> statement statement}}</p>{{/if}}
 {{#if (eq type "list")}}{{#if ordered}}<ol>{{#each items}}<li>{{> statement}}</li>{{/each}}</ol>{{else}}<ul>{{#each items}}<li>{{> statement}}</li>{{/each}}</ul>{{/if}}{{/if}}
 {{#if (eq type "table")}}<div class="table-wrap" tabindex="0"><table><thead><tr>{{#each columns}}<th scope="col">{{this}}</th>{{/each}}</tr></thead><tbody>{{#each rows}}<tr>{{#each this}}<td>{{> statement}}</td>{{/each}}</tr>{{/each}}</tbody></table></div>{{/if}}
-{{#if (eq type "quote")}}<blockquote>{{#unless verbatim}}<span class="badge">{{@root.ui.paraphrase}}</span>{{/unless}}{{> statement statement}}</blockquote>{{/if}}
+{{#if (eq type "quote")}}<blockquote>{{#unless verbatim}}<span class="badge">{{@root.ui.paraphrase}}</span>{{/unless}}{{> statement statement}}{{#if speaker}}<footer class="quote-speaker">— {{speaker}}</footer>{{/if}}</blockquote>{{/if}}
 {{#if (eq type "code")}}{{#if interpretation}}<span class="badge">{{@root.ui.reconstructed}}</span>{{/if}}<pre><code>{{text}}</code></pre><div class="code-citations">{{> citations}}</div>{{/if}}
 {{#if (eq type "diagram")}}<figure class="diagram" id="diagram-{{id}}"><p class="diagram-title" id="diagram-{{id}}-title">{{{titleHtml}}}</p><div class="diagram-wrap" tabindex="0" role="region" aria-labelledby="diagram-{{id}}-title">{{{svg}}}</div><figcaption>{{> statement caption}}</figcaption></figure>{{/if}}
 {{#if (eq type "figure")}}<figure id="frame-{{frameId}}"><img src="{{asset}}" alt="{{alt}}" loading="lazy"><figcaption>{{> statement caption}}</figcaption></figure>{{/if}}
