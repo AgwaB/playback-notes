@@ -30,7 +30,7 @@ Andrej Karpathy's [“[1hr Talk] Intro to Large Language Models”](https://www.
 
 ## How it works
 
-![Five steps: your video, local evidence, analysis by your agent, validation, and a report in the formats you choose: HTML, Markdown or PDF](references/assets/how-it-works.png)
+![Five steps: your video, audio or transcript, local evidence, analysis by your agent, validation, and a report in the formats you choose: HTML, Markdown or PDF](references/assets/how-it-works.png)
 
 ## Usage
 
@@ -74,7 +74,7 @@ On Windows, follow the [PowerShell setup](references/windows.md); on WSL, the [W
 
 ### 2. Ask your agent
 
-Choose how deep the report goes:
+Give it a YouTube link, a local audio or video file (MP3, M4A, WAV, FLAC, MP4, MOV, MKV and more), a direct link to such a file, or a transcript (SRT, VTT, TXT). Choose how deep the report goes:
 
 | Mode | What you get | Ask with words like | For the 1-hour example |
 | --- | --- | --- | --- |

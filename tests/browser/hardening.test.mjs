@@ -16,12 +16,13 @@ const execute = promisify(execFile);
 const executablePath = process.env.TEST_BROWSER_EXECUTABLE;
 const browserTest = { skip: !executablePath, timeout: 90000 };
 
-async function nativeFixture(t, { codec = false, absent = false } = {}) {
+async function nativeFixture(t, { codec = false, absent = false, audio = false } = {}) {
   const f = await fixture({
     mutate(d) {
       d.request.outputLanguage = d.report.outputLanguage = "en";
       d.evidence.source.kind = "direct-media";
-      d.evidence.source.canonicalUrl = "https://example.com/fixture.mp4";
+      if (audio) d.evidence.source.mediaType = "audio";
+      d.evidence.source.canonicalUrl = `https://example.com/fixture.${audio ? "wav" : "mp4"}`;
       d.evidence.source.platformId = null;
       d.evidence.source.playback = { kind: "native", locator: "media:fixture" };
       d.request.source.value = d.evidence.source.canonicalUrl;
@@ -60,8 +61,13 @@ async function nativeFixture(t, { codec = false, absent = false } = {}) {
     }
   });
   if (!absent) {
-    const media = path.join(f.root, codec ? "unsupported.mkv" : "colors.mp4");
-    const inputs = codec
+    const media = path.join(
+      f.root,
+      audio ? "tone.wav" : codec ? "unsupported.mkv" : "colors.mp4",
+    );
+    const inputs = audio
+      ? ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=16000:duration=6", "-c:a", "pcm_s16le"]
+      : codec
       ? ["-f", "lavfi", "-i", "color=red:s=160x90:r=10:d=6", "-c:v", "ffv1"]
       : [
           "-f",
@@ -221,6 +227,40 @@ test(
     });
     t.diagnostic(
       JSON.stringify({ readyLastSeek: await decoded(f.page, 2, 1) }),
+    );
+    assert.equal(await f.page.locator("#player-status").textContent(), "");
+  },
+);
+
+test(
+  "an audio source plays in an audio element and its citations seek it",
+  browserTest,
+  async (t) => {
+    const f = await nativeFixture(t, { audio: true });
+    await f.page.goto(f.running.url);
+    assert.equal(
+      await f.page.locator(".masthead .eyebrow").textContent(),
+      "AUDIO NOTES · Briefing",
+    );
+    for (const ms of [2000, 4000]) {
+      await f.page.locator(`a.ts[data-ms="${ms}"]`).first().click();
+      await f.page.waitForFunction(
+        (seconds) => {
+          const audio = document.querySelector("#source-panel audio");
+          return (
+            audio &&
+            audio.readyState >= 2 &&
+            !audio.seeking &&
+            Math.abs(audio.currentTime - seconds) <= 0.12
+          );
+        },
+        ms / 1000,
+      );
+    }
+    assert.equal(await f.page.locator("video").count(), 0);
+    assert.equal(
+      await f.page.locator("#source-panel audio").evaluate((a) => a.paused),
+      true,
     );
     assert.equal(await f.page.locator("#player-status").textContent(), "");
   },

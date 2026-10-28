@@ -122,3 +122,19 @@ test("English controls do not change report language or Unicode source text", as
     );
   }
 });
+
+test("the masthead names the source medium: video by default, audio for audio-only sources", async (t) => {
+  const masthead = async (mediaType) => {
+    const f = await fixture({
+      mutate(d) {
+        if (mediaType) d.evidence.source.mediaType = mediaType;
+      },
+    });
+    t.after(() => rm(f.root, { recursive: true, force: true }));
+    const document = new JSDOM(htmlDocument(f.bundle)).window.document;
+    return document.querySelector(".masthead .eyebrow").textContent;
+  };
+  assert.equal(await masthead(null), "VIDEO NOTES · Briefing");
+  assert.equal(await masthead("audio"), "AUDIO NOTES · Briefing");
+  assert.equal(await masthead("unknown"), "VIDEO NOTES · Briefing");
+});

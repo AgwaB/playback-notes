@@ -9,7 +9,7 @@
 </head>
 <body>
 <a class="skip-link" href="#main">{{ui.skip}}</a>
-<header class="masthead"><div class="eyebrow">VIDEO NOTES · {{modeLabel}}</div><h1>{{{titleHtml}}}</h1>
+<header class="masthead"><div class="eyebrow">{{eyebrow}} · {{modeLabel}}</div><h1>{{{titleHtml}}}</h1>
 <p class="metadata">{{sourceLabel}}{{#if durationLabel}} · {{durationLabel}}{{/if}}</p>
 <div class="toolbar"><button id="open-source" type="button">{{ui.open}}</button>{{#each exports}}{{#if available}}<a href="{{path}}" download>{{format}}</a>{{else}}<span>{{format}} · {{../ui.failedFormat}}</span>{{/if}}{{/each}}</div></header>
 <div class="layout">
