@@ -53,5 +53,5 @@ process.stdout.write("WINDOWS OCR TEST 12345\nWindows Unicode support verified ð
   assert.equal(result.frames[0].timestampMs, 0);
   assert.equal(result.frames[0].ocrText, "WINDOWS OCR TEST 12345\nWindows Unicode support verified ðŸ™‚");
   assert.equal(result.raw.visualOcr.sampled, 2);
-  assert.equal(result.extraction.provider, "video-summarizer/visual-ocr");
+  assert.equal(result.extraction.provider, "playback-notes/visual-ocr");
 });

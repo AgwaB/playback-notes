@@ -18,7 +18,7 @@ download software or change drivers. Obtain the user's approval for any software
 or model installation.
 
 After preparing the tools, the user's optional
-`~/.agents/video-summarizer-asr.json` can contain absolute WSL paths:
+`~/.agents/playback-notes-asr.json` can contain absolute WSL paths (a file under the pre-rename name `~/.agents/video-summarizer-asr.json` is still read when the new one does not exist):
 
 ```json
 {

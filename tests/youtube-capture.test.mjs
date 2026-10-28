@@ -79,7 +79,7 @@ test("DOM capture retains displayed starts, unknown ends, raw provenance and par
   assert.equal(evidence.extraction.status, "partial");
   assert.equal(
     evidence.extraction.provider,
-    "video-summarizer/browser-transcript-dom",
+    "playback-notes/browser-transcript-dom",
   );
   assert.ok(
     evidence.extraction.warnings.some((w) => w.code === "DOM_CAPTURE_PARTIAL"),

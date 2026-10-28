@@ -223,9 +223,9 @@ test("install makes files read-only, relinks only directory links, and replaces 
     await unlock(root);
     await rm(root, { recursive: true, force: true });
   });
-  const target = path.join(root, "agents", "video-summarizer");
-  const claude = path.join(root, "claude", "video-summarizer");
-  const realDir = path.join(root, "codex", "video-summarizer");
+  const target = path.join(root, "agents", "playback-notes");
+  const claude = path.join(root, "claude", "playback-notes");
+  const realDir = path.join(root, "codex", "playback-notes");
   await mkdir(path.dirname(claude), { recursive: true });
   await linkDirectory(path.join(root, "nonexistent", "dev-tree"), claude);
   await mkdir(realDir, { recursive: true });
@@ -241,7 +241,7 @@ test("install makes files read-only, relinks only directory links, and replaces 
     "lib/output.mjs",
     "templates/report.html",
     "references/execution.md",
-    ".video-summarizer-install.json",
+    ".playback-notes-install.json",
   ])
     await access(path.join(target, part));
   for (const entry of ["tests", "internal", "docs", "DESIGN.md"])
@@ -287,7 +287,7 @@ test("install makes files read-only, relinks only directory links, and replaces 
   );
   assert.deepEqual(
     await (await import("node:fs/promises")).readdir(path.dirname(claude)),
-    ["video-summarizer"],
+    ["playback-notes"],
     "no previous junction left after commit",
   );
   // A foreign directory at the target is refused.
@@ -314,7 +314,7 @@ test("a failed staging operation leaves the previous install usable; invalid mar
     await rm(root, { recursive: true, force: true });
   });
   const parent = path.join(root, "agents");
-  const target = path.join(parent, "video-summarizer");
+  const target = path.join(parent, "playback-notes");
   await mkdir(parent);
   assert.equal(
     (await install({ target, withDependencies: false })).status,
@@ -344,12 +344,12 @@ test("a failed staging operation leaves the previous install usable; invalid mar
   );
   assert.deepEqual(
     (await readdir(parent)).sort(),
-    ["video-summarizer"],
+    ["playback-notes"],
     "no staging leftovers",
   );
   // A directory named like the marker is not ownership.
   const foreign = path.join(root, "foreign");
-  await mkdir(path.join(foreign, ".video-summarizer-install.json"), {
+  await mkdir(path.join(foreign, ".playback-notes-install.json"), {
     recursive: true,
   });
   await writeFile(path.join(foreign, "keep.txt"), "mine");
@@ -400,9 +400,9 @@ test("round 6: swap, permission and link failures roll back to the previous inst
     await rm(root, { recursive: true, force: true });
   });
   const parent = path.join(root, "agents");
-  const target = path.join(parent, "video-summarizer");
-  const hostLink = path.join(root, "host", "video-summarizer");
-  const newLink = path.join(root, "new-host", "video-summarizer");
+  const target = path.join(parent, "playback-notes");
+  const hostLink = path.join(root, "host", "playback-notes");
+  const newLink = path.join(root, "new-host", "playback-notes");
   const elsewhere = path.join(root, "old-skill");
   await mkdir(elsewhere);
   await mkdir(path.dirname(hostLink));
@@ -412,7 +412,7 @@ test("round 6: swap, permission and link failures roll back to the previous inst
     "ok",
   );
   const marker = await readFile(
-    path.join(target, ".video-summarizer-install.json"),
+    path.join(target, ".playback-notes-install.json"),
     "utf8",
   );
   for (const faultAt of ["swap", "chmod", "link", "link-swap", "linked"]) {
@@ -430,7 +430,7 @@ test("round 6: swap, permission and link failures roll back to the previous inst
     );
     assert.equal(
       await readFile(
-        path.join(target, ".video-summarizer-install.json"),
+        path.join(target, ".playback-notes-install.json"),
         "utf8",
       ),
       marker,
@@ -452,13 +452,13 @@ test("round 6: swap, permission and link failures roll back to the previous inst
     );
     assert.deepEqual(
       await readdir(path.dirname(hostLink)),
-      ["video-summarizer"],
+      ["playback-notes"],
       `${faultAt}: no temporary link left`,
     );
     const names = await readdir(parent);
     assert.deepEqual(
       names.filter((name) => !name.includes(".failed-")).sort(),
-      ["video-summarizer"],
+      ["playback-notes"],
       `${faultAt}: no staging/previous/lock left`,
     );
     const retained = names.filter((name) => name.includes(".failed-"));
@@ -474,7 +474,7 @@ test("round 6: swap, permission and link failures roll back to the previous inst
       );
   }
   // Initially absent target created by someone else during staging: refused, untouched.
-  const fresh = path.join(root, "fresh", "video-summarizer");
+  const fresh = path.join(root, "fresh", "playback-notes");
   await assert.rejects(
     install({
       target: fresh,
@@ -514,7 +514,7 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
     await unlock(root);
     await rm(root, { recursive: true, force: true });
   });
-  const target = path.join(root, "agents", "video-summarizer");
+  const target = path.join(root, "agents", "playback-notes");
   await mkdir(path.dirname(target));
   assert.equal(
     (await install({ target, withDependencies: false })).status,
@@ -532,8 +532,8 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
         await rename(target, ours);
         await mkdir(target);
         await writeFile(
-          path.join(target, ".video-summarizer-install.json"),
-          await readFile(path.join(ours, ".video-summarizer-install.json")),
+          path.join(target, ".playback-notes-install.json"),
+          await readFile(path.join(ours, ".playback-notes-install.json")),
         );
         await writeFile(path.join(target, "keep.txt"), "mine");
       },
@@ -543,7 +543,7 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
   assert.equal(await readFile(path.join(target, "keep.txt"), "utf8"), "mine");
   assert.deepEqual(
     (await readdir(path.dirname(target))).sort(),
-    ["video-summarizer"],
+    ["playback-notes"],
     "no staging, previous or lock left",
   );
   // R8-3: a failure between the ownership check and the swap still removes the staged copy.
@@ -561,7 +561,7 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
   );
   assert.deepEqual(
     (await readdir(path.dirname(target))).sort(),
-    ["video-summarizer"],
+    ["playback-notes"],
     "staging removed",
   );
 });
@@ -613,7 +613,7 @@ test("rollback preserves a replacement target and reports the retained original 
   const f = await isolatedInstaller(t);
   await install({ target: f.target, withDependencies: false });
   const marker = await readFile(
-    path.join(f.target, ".video-summarizer-install.json"),
+    path.join(f.target, ".playback-notes-install.json"),
     "utf8",
   );
   let mode;
@@ -645,7 +645,7 @@ test("rollback preserves a replacement target and reports the retained original 
   assert.ok(previous);
   assert.equal(
     await readFile(
-      path.join(f.root, previous, ".video-summarizer-install.json"),
+      path.join(f.root, previous, ".playback-notes-install.json"),
       "utf8",
     ),
     marker,

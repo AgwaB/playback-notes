@@ -1,13 +1,13 @@
-<h1 align="center">Video Summarizer</h1>
+<h1 align="center">Playback Notes</h1>
 
 <p align="center">
-  <strong>From videos to readable reports—with the evidence attached.</strong><br>
+  <strong>Readable reports from anything you watch or listen to—with the evidence attached.</strong><br>
   A skill for Claude Code, Codex and pi. No separate API key: the agent you already use writes the report,<br>
-  every claim links to its moment in the video, and the citations are checked before export.
+  every claim links to its moment in the recording, and the citations are checked before export.
 </p>
 
 <p align="center">
-  <a href="https://github.com/AgwaB/video-summarizer/actions/workflows/windows.yml"><img src="https://img.shields.io/badge/CI-cross--platform-57606a?style=flat-square" alt="Cross-platform CI workflow; open for current results"></a>
+  <a href="https://github.com/AgwaB/playback-notes/actions/workflows/windows.yml"><img src="https://img.shields.io/badge/CI-cross--platform-57606a?style=flat-square" alt="Cross-platform CI workflow; open for current results"></a>
   <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-24.15%2B%20%2824.x%29%20or%2026%2B-417E38?style=flat-square" alt="Node.js 24.15 or later in 24.x, or 26+"></a>
   <a href="#example-output"><img src="https://img.shields.io/badge/exports-HTML%20%C2%B7%20Markdown%20%C2%B7%20PDF-b5382b?style=flat-square" alt="HTML, Markdown or PDF, as you choose"></a>
 </p>
@@ -39,8 +39,8 @@ Andrej Karpathy's [“[1hr Talk] Intro to Large Language Models”](https://www.
 Requires **Node.js 24.15+ within the 24.x line, or 26+** (Node 25 is not supported).
 
 ```bash
-npx skills add AgwaB/video-summarizer -g
-(cd ~/.agents/skills/video-summarizer && npm ci)
+npx skills add AgwaB/playback-notes -g
+(cd ~/.agents/skills/playback-notes && npm ci)
 ```
 
 **Both lines are required.** The first installs the skill with the [`skills` CLI](https://github.com/vercel-labs/skills) for the agents you pick, such as Claude Code, Codex and pi. The second installs its dependencies. In Windows PowerShell, use the [PowerShell commands](references/windows.md) instead.
@@ -48,23 +48,25 @@ npx skills add AgwaB/video-summarizer -g
 To update or remove it:
 
 ```bash
-npx skills update video-summarizer -g
-(cd ~/.agents/skills/video-summarizer && npm ci)  # updating removes the dependencies
+npx skills update playback-notes -g
+(cd ~/.agents/skills/playback-notes && npm ci)  # updating removes the dependencies
 
-npx skills remove video-summarizer -g
+npx skills remove playback-notes -g
 ```
+
+Installed it as `video-summarizer` before the rename? Remove that copy with `npx skills remove video-summarizer -g`.
 
 <details>
 <summary><strong>Alternative:</strong> manual install (read-only copy)</summary>
 
 ```bash
-git clone https://github.com/AgwaB/video-summarizer.git
-cd video-summarizer
+git clone https://github.com/AgwaB/playback-notes.git
+cd playback-notes
 npm ci
-node scripts/install.mjs --link ~/.claude/skills/video-summarizer
+node scripts/install.mjs --link ~/.claude/skills/playback-notes
 ```
 
-This installs a read-only copy in `~/.agents/skills/video-summarizer`, where Codex and pi find it. `--link` connects Claude Code; omit it if you don't use Claude Code. To update, pull this repository, run `npm ci`, then repeat the last command.
+This installs a read-only copy in `~/.agents/skills/playback-notes`, where Codex and pi find it. `--link` connects Claude Code; omit it if you don't use Claude Code. To update, pull this repository, run `npm ci`, then repeat the last command.
 
 </details>
 
@@ -83,6 +85,7 @@ Choose how deep the report goes:
 Give me a briefing on this video: <video-url>
 Create a deep-dive on this lecture, in Spanish, and make a PDF too: <video-url>
 Summarize this local video using the SRT file I supplied: <path>
+What was decided in this meeting recording? <path-to-audio>
 ```
 
 If you don't name the formats, the agent asks which you want: HTML, Markdown, PDF or any combination. Otherwise it asks only for missing information or approval for optional local tools.

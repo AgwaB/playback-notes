@@ -1,11 +1,9 @@
-import os from "node:os";
-import path from "node:path";
 import { isMain, optionsFor, required, result, runCli } from "../lib/cli.mjs";
 import { issue } from "../lib/io.mjs";
 import { reviewAsr } from "../lib/asr-review.mjs";
-import { preferredGpu } from "./prepare.mjs";
+import { asrPreferencePaths, preferredGpu } from "./prepare.mjs";
 
-export async function review(options, { asrPreferencePath = path.join(os.homedir(), ".agents", "video-summarizer-asr.json") } = {}) {
+export async function review(options, { asrPreferencePath = asrPreferencePaths() } = {}) {
   required(options, ["source", "work-dir", "start-ms", "end-ms", "local-asr-executable", "local-asr-model"]);
   options = await preferredGpu(options, { policy: { asr: "local" } }, asrPreferencePath);
   const { review: data, artifact } = await reviewAsr(options);

@@ -16,7 +16,7 @@ Last reviewed: **2026-10-28**. This is the public reference for supported config
 | Linux outside WSL | Debian arm64 and emulated amd64 core/browser/PDF paths, plus arm64 local ASR, have been exercised | General native desktops and GPU combinations are not certified. Keep Chromium's sandbox enabled |
 | Installation | Self-contained dependency copies, host links and update recovery are supported | Existing ordinary directories are not replaced. Retained `.previous-*` / `.failed-*` copies require deliberate manual cleanup; see [README](../README.md) |
 | Hosts | Codex/Claude flows on macOS and Windows, and pi/Codex flows on Windows/WSL, have been exercised | Host versions, discovery, permissions and resume behavior differ. This is a host-agent skill, not a standalone service |
-| CI | [Cross-platform workflow](https://github.com/AgwaB/video-summarizer/blob/main/.github/workflows/windows.yml) configures Windows, Linux and macOS checks | Check the exact commit's [Actions results](https://github.com/AgwaB/video-summarizer/actions/workflows/windows.yml); local tests or workflow configuration alone do not establish a hosted pass |
+| CI | [Cross-platform workflow](https://github.com/AgwaB/playback-notes/blob/main/.github/workflows/windows.yml) configures Windows, Linux and macOS checks | Check the exact commit's [Actions results](https://github.com/AgwaB/playback-notes/actions/workflows/windows.yml); local tests or workflow configuration alone do not establish a hosted pass |
 
 ## Capabilities and limits
 

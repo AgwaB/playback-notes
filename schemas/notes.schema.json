@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://video-summarizer.invalid/notes",
+  "$id": "https://playback-notes.invalid/notes",
   "type": "object",
   "properties": {
     "schemaVersion": { "const": 1 },

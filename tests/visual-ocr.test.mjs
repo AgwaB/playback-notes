@@ -150,7 +150,7 @@ test("visual-only evidence (no transcript, ASR off) is accepted when frames carr
   });
   assert.equal(result.segments.length, 0);
   assert.equal(result.extraction.method, "none");
-  assert.equal(result.extraction.provider, "video-summarizer/visual-ocr");
+  assert.equal(result.extraction.provider, "playback-notes/visual-ocr");
   const evidence = makeEvidence(result);
   assert.equal(evidence.chunks.length, 0);
   const frame = evidence.frames[0];

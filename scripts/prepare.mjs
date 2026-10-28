@@ -72,11 +72,31 @@ async function capabilities(options, workDir) {
   }
 }
 // A user-owned preference applies only to its matching explicit CPU runtime and model.
-export async function preferredGpu(options, request, preferencePath) {
+/** ASR preference files in priority order; the second is the name used before the rename. */
+export const asrPreferencePaths = (home = os.homedir()) => [
+  path.join(home, ".agents", "playback-notes-asr.json"),
+  path.join(home, ".agents", "video-summarizer-asr.json"),
+];
+
+// The first preference file that exists wins, even if it is malformed or does not match.
+async function existingPreference(paths) {
+  for (const candidate of [paths].flat()) {
+    try {
+      return { path: candidate, info: await stat(candidate) };
+    } catch (error) {
+      if (error?.code !== "ENOENT" && error?.code !== "ENOTDIR") return null;
+    }
+  }
+  return null;
+}
+
+export async function preferredGpu(options, request, preferencePaths) {
   if (request.policy.asr !== "local" || options["local-asr-gpu-executable"] ||
       !options["local-asr-executable"] || !options["local-asr-model"]) return options;
   try {
-    if ((await stat(preferencePath)).size > 64 * 1024) return options;
+    const found = await existingPreference(preferencePaths);
+    if (!found || found.info.size > 64 * 1024) return options;
+    const preferencePath = found.path;
     const preference = JSON.parse(await readFile(preferencePath, "utf8"));
     const values = [preference.localAsrExecutable, preference.localAsrModel, preference.localAsrGpuExecutable];
     if (!values.every((value) => typeof value === "string" && path.isAbsolute(value))) return options;
@@ -92,7 +112,7 @@ export async function preferredGpu(options, request, preferencePath) {
     return options;
   }
 }
-export async function prepare(options, { asrPreferencePath = path.join(os.homedir(), ".agents", "video-summarizer-asr.json") } = {}) {
+export async function prepare(options, { asrPreferencePath = asrPreferencePaths() } = {}) {
   required(options, ["request", "work-dir"]);
   validateCodeSwitch(options["local-asr-code-switch"]);
   const request = normalizeRequest((await readJson(options.request)).data);

@@ -5,21 +5,21 @@ To install with the `skills` CLI, run these in PowerShell. Windows PowerShell 5.
 
 ```powershell
 node --version
-npx skills add AgwaB/video-summarizer -g
-npm ci --prefix "$HOME\.agents\skills\video-summarizer"
+npx skills add AgwaB/playback-notes -g
+npm ci --prefix "$HOME\.agents\skills\playback-notes"
 ```
 
-Run the `npm ci` line again after `npx skills update video-summarizer -g`, which removes the dependencies. The `skills` CLI links Claude Code with a directory junction.
+Run the `npm ci` line again after `npx skills update playback-notes -g`, which removes the dependencies. The `skills` CLI links Claude Code with a directory junction. If you installed the skill as `video-summarizer` before the rename, remove it with `npx skills remove video-summarizer -g`.
 
 For the manual read-only install, change to the repository directory and run:
 
 ```powershell
 node --version
 npm ci
-node scripts/install.mjs --link "$HOME\.claude\skills\video-summarizer"
+node scripts/install.mjs --link "$HOME\.claude\skills\playback-notes"
 ```
 
-The default installation target is `$HOME\.agents\skills\video-summarizer`; both `~/` and `~\` are supported. Codex and pi read that directory directly, so `--link` is needed only for Claude Code.
+The default installation target is `$HOME\.agents\skills\playback-notes`; both `~/` and `~\` are supported. Codex and pi read that directory directly, so `--link` is needed only for Claude Code.
 Host links use directory junctions, which require neither administrator privileges nor Developer Mode.
 Windows cannot rename a junction over an existing one. When relinking, the installer temporarily moves the existing junction to `<link>.previous-<id>` before creating the new junction (unlike atomic replacement on POSIX). If interrupted between those steps, rename the retained junction back to its original name.
 Existing ordinary directories are not replaced. Installed files are read-only, but directory ACLs are not changed,

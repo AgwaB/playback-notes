@@ -33,7 +33,7 @@ const PARTS = [
   "references",
   "node_modules",
 ];
-const MARKER = ".video-summarizer-install.json";
+const MARKER = ".playback-notes-install.json";
 
 async function setWritable(target, writable) {
   const info = await lstat(target);
@@ -49,7 +49,7 @@ async function setWritable(target, writable) {
 }
 
 /**
- * Install a copy with read-only files (default `~/.agents/skills/video-summarizer`) and
+ * Install a copy with read-only files (default `~/.agents/skills/playback-notes`) and
  * point host skill directories at it with directory links (junctions on Windows).
  * POSIX directory permissions also prevent creating files; Windows read-only directory
  * attributes do not enforce a write ACL. These permissions are not an isolation boundary.
@@ -62,7 +62,7 @@ export async function install(options) {
   const target = path.resolve(
     options.target
       ? home(options.target)
-      : path.join(os.homedir(), ".agents", "skills", "video-summarizer"),
+      : path.join(os.homedir(), ".agents", "skills", "playback-notes"),
   );
   if (path.resolve(source) === target)
     throw new AppError("INVALID_CONTRACT", "Target is the source tree.", 4);

@@ -6,6 +6,7 @@ import {
   access,
   chmod,
   mkdir,
+  mkdtemp,
   readdir,
   writeFile,
   rm,
@@ -13,8 +14,9 @@ import {
   symlink,
 } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { fixture, sampleData } from "./helpers.mjs";
-import { prepare } from "../scripts/prepare.mjs";
+import { asrPreferencePaths, preferredGpu, prepare } from "../scripts/prepare.mjs";
 import { cacheKey } from "../lib/cache.mjs";
 import { loadBundle } from "../lib/validation.mjs";
 import { jsonBytes, readJson } from "../lib/io.mjs";
@@ -503,4 +505,38 @@ test("CLI default-ASR-off failure asks for user input and does not disclose sour
   assert.equal(envelope.nextAction, "ask-user");
   assert.ok(envelope.issues.some((i) => i.code === "ASR_REQUIRED"));
   assert.ok(!error.stdout.includes(f.root));
+});
+
+test("the ASR preference falls back to the pre-rename file and the new file takes precedence", async (t) => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "playback-notes-pref-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  await mkdir(path.join(home, ".agents"));
+  const [current, legacy] = asrPreferencePaths(home);
+  assert.equal(path.basename(current), "playback-notes-asr.json");
+  assert.equal(path.basename(legacy), "video-summarizer-asr.json");
+  const cpu = path.join(home, "cpu"),
+    model = path.join(home, "model.bin");
+  const options = { "local-asr-executable": cpu, "local-asr-model": model };
+  const local = { policy: { asr: "local" } };
+  const preference = (gpu) =>
+    JSON.stringify({ localAsrExecutable: cpu, localAsrModel: model, localAsrGpuExecutable: gpu });
+
+  assert.equal((await preferredGpu(options, local, [current, legacy]))["local-asr-gpu-executable"], undefined);
+  await writeFile(legacy, preference(path.join(home, "legacy-gpu")));
+  assert.equal(
+    (await preferredGpu(options, local, [current, legacy]))["local-asr-gpu-executable"],
+    path.join(home, "legacy-gpu"),
+    "a preference saved under the old name keeps working",
+  );
+  await writeFile(current, preference(path.join(home, "current-gpu")));
+  assert.equal(
+    (await preferredGpu(options, local, [current, legacy]))["local-asr-gpu-executable"],
+    path.join(home, "current-gpu"),
+  );
+  await writeFile(current, "invalid json");
+  assert.equal(
+    (await preferredGpu(options, local, [current, legacy]))["local-asr-gpu-executable"],
+    undefined,
+    "an existing new preference is authoritative even when malformed",
+  );
 });

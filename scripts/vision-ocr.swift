@@ -1,4 +1,4 @@
-// Apple Vision text recognizer for the video-summarizer OCR path (macOS only).
+// Apple Vision text recognizer for the playback-notes OCR path (macOS only).
 // Build once:  swiftc -O -o "$PRIVATE/vision-ocr" scripts/vision-ocr.swift
 // Usage:       vision-ocr <image> [lang,lang]   e.g. vision-ocr frame.jpg ko-KR,en-US
 // Output:      one TSV line per recognized string: confidence, x, y, width, height, text
