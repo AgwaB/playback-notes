@@ -28,8 +28,11 @@ named-pipe ASR output and read-only attribute limits.
 
 ## Private/public layout
 
+Everything lives in `.playback-notes/` in the directory where the session started; [SKILL.md section 2](../SKILL.md#2-prepare-private-evidence) gives the naming rules that keep runs from colliding.
+
 ```text
-<private-parent>/work/<job-id>/
+.playback-notes/.gitignore     # "*"
+.playback-notes/work/<YYYYMMDD-HHMMSS>-<slug>/
   request.json
   capabilities.json
   raw/extraction.json
@@ -38,7 +41,7 @@ named-pipe ASR output and read-only attribute limits.
   analysis-ledger.json
   report.json
   manifest.json
-<public-parent>/<source-id>/<mode>/<revision>/
+.playback-notes/reports/<source-id>/<mode>/r<N>/
   index.html
   report.md
   report.pdf              # only when requested and successfully exported
@@ -47,7 +50,7 @@ named-pipe ASR output and read-only attribute limits.
   media/                  # only after copyLocalMedia approval
 ```
 
-`--out-dir` is the revision directory itself (render/export write directly into it); the `<source-id>/<mode>/<revision>` nesting above is the layout to create, e.g. `OUT="$PUBLIC/$SOURCE_ID/briefing/r1"` with `SOURCE_ID` from `evidence.source.id`. A changed report, analysis, sharing policy or renderer needs the next revision directory (`r2`, …); an existing revision is never rewritten with different content.
+`--out-dir` is the revision directory itself (render/export write directly into it); the `<source-id>/<mode>/r<N>` nesting above is the layout to create, e.g. `OUT="$ROOT/reports/$SOURCE_ID/briefing/r1"` with `ROOT` the absolute `.playback-notes` path and `SOURCE_ID` from `evidence.source.id`. A changed report, analysis, sharing policy or renderer needs the next revision directory (`r2`, …); an existing revision is never rewritten with different content.
 
 Neither root may contain the other. The public root cannot contain request/evidence/analysis/source input files. Do not serve the private job. Work directories and files are owner-only where supported; public HTML contains the full transcript unless `publishTranscript` is false, and always contains the report's own quotes; share deliberately.
 

@@ -34,7 +34,17 @@ Accept a normal request such as “Give me a briefing on this video” or “Cre
 
 Read [execution](references/execution.md) and [evidence rules](references/evidence-rules.md). All relative skill paths below resolve from **this skill's installation directory**, not the user's project.
 
-- Create a private job directory outside the public output root. Write `request.json` using the documented contract.
+- Save everything in **`.playback-notes/`** inside the directory where the user started this session. Resolve its absolute path first; never use the skill's installation directory, a temp directory, or the home directory unless the session started there. If the user names a folder for the reports, use it as the public root; private jobs stay in `.playback-notes/work/`. If the working directory is not writable, ask where to save.
+
+  ```text
+  .playback-notes/
+    .gitignore                        # contains "*"; create it with the folder so transcripts stay out of git
+    work/<YYYYMMDD-HHMMSS>-<slug>/    # one private job; slug = video ID or file name in ASCII letters, digits and "-" (≤ 32)
+    reports/<source-id>/<mode>/r<N>/  # one public revision
+  ```
+
+- The folder is shared by every run in that directory, so never write into another job or revision. Create a new job directory with `mkdir` without `-p`; if the name exists, append `-2`, `-3`, …. Reuse an existing job only as the evidence-snapshot rule below allows. For a report, use the next unused `r<N>` for that source and mode, starting at `r1`; if render refuses the directory (`OUTPUT_EXISTS`, or `EVIDENCE_MISMATCH` asking for a new revision), take the next number.
+- Write `request.json` into the job using the documented contract.
 - Run `scripts/prepare.mjs --check` with explicit runtime paths where available. The script returns one JSON envelope, not an interactive prompt.
 - If a script fails with `ERR_MODULE_NOT_FOUND`, the skill's npm dependencies are missing (for example after installing or updating it with `npx skills`). Do not patch the skill or work around it: ask the user to run `npm ci` in this skill's installation directory, or run it there only after they explicitly approve, then retry.
 - After local ASR is explicitly approved, if no executable or model was specified, check `~/.agents/playback-notes-asr.json` (or, when it does not exist, the pre-rename `~/.agents/video-summarizer-asr.json`) for `localAsrExecutable` and `localAsrModel` absolute paths. Pass both existing files as `--local-asr-executable` and `--local-asr-model`. If the same preference also contains an existing `localAsrGpuExecutable`, pass it as `--local-asr-gpu-executable`; the adapter checks whether it can actually use a GPU and falls back to the CPU runtime if unavailable. Respect explicitly specified runtimes and models. The preference does not authorize ASR, downloads or software installation. If no usable runtime or model is configured, follow the capability-unavailable flow.
@@ -64,14 +74,16 @@ Read [report authoring](references/report-authoring.md), the evidence/report sch
 ## 4. Validate and deliver
 
 1. Run `validate.mjs`. Fix contract/citation errors against evidence; do not weaken validation or fabricate approval to pass it.
-2. Run `render.mjs`, then `export.mjs` into a revision directory (`$PUBLIC/<source-id>/<mode>/r1`; see execution reference). Pass an existing Chromium executable only for requested PDF output. Export does not call a model. `verify-output.mjs` re-checks the finished revision.
+2. Run `render.mjs`, then `export.mjs` into the next unused revision directory (`.playback-notes/reports/<source-id>/<mode>/r<N>`; see section 2 and the execution reference). Pass an existing Chromium executable only for requested PDF output. Export does not call a model. `verify-output.mjs` re-checks the finished revision.
 3. Inspect every requested artifact. Check timestamps, key conditions, interpretation labels, image captions, long tables/code and output-language fonts. Read the public manifest's `overallStatus` and each artifact status.
-4. If HTML was requested and playback is wanted, start `serve.mjs` with the **public output root**, optionally the private job manifest for one exact media mapping. Open the returned loopback URL. Do not expose the server to the network. Stop it when no longer needed.
+4. If HTML was requested and playback is wanted, start `serve.mjs` with the **revision directory** (`--root` is the `r<N>` folder that holds `index.html`), optionally the private job manifest for one exact media mapping. Open the returned loopback URL. Do not expose the server to the network. Stop it when no longer needed.
 5. Deliver direct links to the files, source/analysis limitations, and playback/sharing caveats. `completed` means the requested files exist, not that source claims are independently verified. If any requested file failed, explicitly report incomplete work and the recovery action.
 
 ## 5. Answer follow-up questions
 
 After delivery the user may ask about the source (“what did they say about X?”, “explain that part in more detail”). Answer in conversation, in the user's language, from the **same private evidence**, not from memory of the report:
+
+- In a new conversation, find the job under `.playback-notes/work/` whose `request.json` names that source; if several match, use the newest one or ask which report they mean.
 
 - Re-read the relevant chunks in `evidence.json` and support each substantive claim with the segment's time, e.g. `[12:19]`; for YouTube or another public source, also link that moment. Local files get times only.
 - Quote only short phrases (a sentence or less) and paraphrase the rest with times. Long verbatim passages republish the source, and model providers can block them mid-answer.
