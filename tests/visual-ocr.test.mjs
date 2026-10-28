@@ -341,6 +341,13 @@ test("playability mapping distinguishes bot check, age restriction, unavailable 
     ),
     ["SOURCE_UNAVAILABLE", "video-unavailable"],
   );
+  // YouTube localizes the reason to the requester's region (here Korean).
+  assert.deepEqual(
+    code(() =>
+      assertPlayability({ status: "ERROR", reason: "이 동영상은 볼 수 없습니다." }),
+    ),
+    ["SOURCE_UNAVAILABLE", "video-unavailable"],
+  );
   assert.deepEqual(
     code(() =>
       assertPlayability({
