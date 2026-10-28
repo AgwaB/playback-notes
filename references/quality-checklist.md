@@ -17,7 +17,7 @@
 - [ ] Clicking a time seeks correctly where supported; a blocked player leaves transcript/source fallback usable.
 - [ ] Untimed evidence has no fabricated seek target.
 - [ ] Local-only links disclose sharing/playback limitations; no private paths or signed URLs leaked.
-- [ ] All requested formats carry the same report/evidence hashes and substantive content. The defaults are HTML and Markdown; include PDF only when requested.
+- [ ] All requested formats carry the same report/evidence hashes and substantive content. Only the formats the user chose were produced.
 - [ ] Tables, quotations, code and images are readable; no clipped mobile layout or PDF text.
 - [ ] When PDF is requested, its fonts render the actual output language, including Korean when requested. Text extraction alone is not sufficient to rule out every visual font issue; visually inspect the PDF when fonts/languages change.
 - [ ] Markdown images resolve relative to the shared report folder.

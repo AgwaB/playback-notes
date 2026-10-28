@@ -7,7 +7,7 @@ substitute for Linux runtimes. The model may be on a mounted Windows drive if it
 is readable from WSL. Do not copy media or model files into public output.
 
 Use Node 24.15 or later within 24.x, or Node 26 or later; Node 25 is excluded.
-Default output is HTML and Markdown and needs no browser. Only a requested PDF
+HTML and Markdown output need no browser. Only a requested PDF
 needs an installed Linux Chromium runtime. See the dated [support matrix](support-matrix.md)
 for current verification boundaries.
 

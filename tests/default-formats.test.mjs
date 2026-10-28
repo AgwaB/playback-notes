@@ -35,6 +35,28 @@ test("unspecified language and formats finish in English with HTML and Markdown 
   assert.doesNotMatch(html, /href="report.pdf"/);
 });
 
+test("a user-chosen Markdown-only request produces only Markdown", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  await writeFile(
+    f.args.request,
+    jsonBytes({ ...f.data.request, formats: ["markdown"] }),
+  );
+  await render(f.args);
+  const result = await exportReport(f.args);
+  assert.equal(result.status, "ok");
+  const manifest = (await readJson(path.join(f.out, "manifest.json"))).data;
+  assert.deepEqual(manifest.requestedFormats, ["markdown"]);
+  assert.equal(manifest.overallStatus, "completed");
+  assert.deepEqual(
+    manifest.artifacts.map((entry) => `${entry.format}:${entry.status}`),
+    ["markdown:created"],
+  );
+  await assert.rejects(readFile(path.join(f.out, "index.html")), {
+    code: "ENOENT",
+  });
+});
+
 test("explicit export preferences still override the lightweight defaults", () => {
   const request = {
     schemaVersion: 1,

@@ -7,7 +7,7 @@ Last reviewed: **2026-10-28**. This is the public reference for supported config
 | Area | Supported configuration / exercised scope | Remaining boundary |
 |---|---|---|
 | Node.js | **24.15 or later within 24.x, or 26+** (`^24.15.0 || >=26.0.0`) | Node 24.0–24.14 and 25.x are excluded |
-| Default output | HTML + Markdown; PDF only when requested | PDF needs an explicitly supplied compatible Chrome/Chromium; a failed requested export is incomplete |
+| Output formats | HTML, Markdown and/or PDF as the user chooses; the agent asks when unspecified | PDF needs an explicitly supplied compatible Chrome/Chromium; a failed requested export is incomplete |
 | Languages | Reports follow an explicit language preference, otherwise the user's conversation language; English is the fallback when unknown | UI labels remain English. ASR/OCR languages and PDF glyphs depend on local models, language data and fonts; see [skill instructions](../SKILL.md) |
 | Windows 11 x64 | Native Node, Unicode paths, junction installation, Chrome/PDF, captions, local OCR and Whisper CUDA/CPU paths have been exercised | Different drivers, accounts and codecs can behave differently; see [Windows setup](windows.md) |
 | Windows 10 x64 | Support target; API/runtime compatibility inspected | No Windows 10 PC/VM validation. ARM64 and UNC are outside the exercised scope |
