@@ -94,7 +94,9 @@ async function scrollToEdge(page, wrap, direction) {
   assert.fail("native arrow keys did not reach the diagram edge");
 }
 
-test("mobile diagrams retain readable label size and their full canvas inside a keyboard scroll viewport", browserTest, async (t) => {
+// Native keyboard scrolling across multiple diagrams and viewport sizes can be
+// substantially slower on a busy hosted macOS runner; keep every assertion.
+test("mobile diagrams retain readable label size and their full canvas inside a keyboard scroll viewport", { ...browserTest, timeout: 120000 }, async (t) => {
   const page = await reportPage(t);
   for (const width of [375, 390, 768, 1280]) {
     await page.setViewportSize({ width, height: 900 });

@@ -93,4 +93,6 @@ jobs:
           node --input-type=module -e "import { accessSync, constants, lstatSync } from 'node:fs'; import { execFileSync } from 'node:child_process'; const browser = process.env.TEST_BROWSER_EXECUTABLE; if (!lstatSync(browser).isFile()) throw new Error('Browser must be a regular file; resolve symlinks first.'); accessSync(browser, constants.X_OK); for (const tool of ['pdftotext', 'pdfinfo']) execFileSync(tool, ['-v'], { stdio: 'inherit' });"
       - name: Browser and PDF regression tests
         if: matrix.node == '26'
-        run: npm run test:browser
+        # Browser instances are memory/CPU intensive; keep all tests while
+        # avoiding oversubscription on hosted runners.
+        run: node --test --test-concurrency=2 tests/browser/*.test.mjs
