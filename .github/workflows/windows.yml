@@ -59,7 +59,7 @@ jobs:
           if [[ '${{ matrix.node }}' == '26' ]]; then
             sudo apt-get install --no-install-recommends -y poppler-utils fonts-noto-cjk
             browser="$(command -v google-chrome || command -v google-chrome-stable)"
-            # PDF accepts an explicit regular executable, not /usr/bin's symlink.
+            # Pin the runner's selected executable; browser tests also cover aliases.
             browser="$(readlink -f "$browser")"
             test -f "$browser" && test -x "$browser"
             printf 'TEST_BROWSER_EXECUTABLE=%s\n' "$browser" >> "$GITHUB_ENV"

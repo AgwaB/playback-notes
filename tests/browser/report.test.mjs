@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, writeFile, rm, mkdir } from "node:fs/promises";
+import { readFile, writeFile, rm, mkdir, realpath, symlink } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fixture } from "../helpers.mjs";
@@ -15,7 +15,32 @@ import { fileHash, jsonBytes, readJson, sha256 } from "../../lib/io.mjs";
 const execute = promisify(execFile);
 const executablePath = process.env.TEST_BROWSER_EXECUTABLE;
 
-test("real native seek, Korean PDF, Markdown, images, retry links and offline document", {
+test("an explicitly selected browser alias creates a complete PDF with text and source links", {
+  skip: !executablePath,
+  timeout: 60000,
+}, async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const browserFile = await realpath(executablePath);
+  let alias;
+  if (process.platform === "win32") {
+    const directory = path.join(f.root, "browser alias");
+    await symlink(path.dirname(browserFile), directory, "junction");
+    alias = path.join(directory, path.basename(browserFile));
+  } else {
+    alias = path.join(f.root, "browser alias");
+    await symlink(browserFile, alias);
+  }
+  const result = await exportReport({ ...f.args, "browser-executable": alias });
+  assert.equal(result.status, "ok", JSON.stringify(result.issues));
+  const pdf = path.join(f.out, "report.pdf");
+  const { stdout: text } = await execute("pdftotext", [pdf, "-"], { timeout: 10000 });
+  assert.ok(text.replace(/\s/g, "").includes(f.data.report.title.replace(/\s/g, "")));
+  const { stdout: links } = await execute("pdfinfo", ["-url", pdf], { timeout: 10000 });
+  assert.ok(links.includes("youtube.com/watch?v=jNQXAC9IVRw&t=2s"));
+});
+
+test("real native seek, untimed transcript, Korean PDF, Markdown, images, retry links and offline document", {
   skip: !executablePath,
   timeout: 120000,
 }, async (t) => {
@@ -25,6 +50,14 @@ test("real native seek, Korean PDF, Markdown, images, retry links and offline do
       d.evidence.source.canonicalUrl = null;
       d.evidence.source.platformId = null;
       d.evidence.source.playback = { kind: "native", locator: "media:fixture" };
+      d.evidence.extraction.timing = "partial";
+      d.evidence.extraction.warnings.push({ code: "TIMING_UNAVAILABLE", severity: "warning",
+        message: "Some transcript timestamps are unavailable; no times were invented.",
+        path: null, retryable: false });
+      d.evidence.segments.push({ id: "seg-000004", startMs: null, endMs: null,
+        text: "보존한 문장에는 시간 정보가 없습니다.", speaker: null });
+      d.evidence.chunks[0].segmentIds.push("seg-000004");
+      d.report.summary[0].citations.push({ kind: "segment", id: "seg-000004" });
       d.report.title += " <script>window.injected=true</script>";
     },
   });
@@ -186,6 +219,17 @@ test("real native seek, Korean PDF, Markdown, images, retry links and offline do
   });
   await page.keyboard.press("Escape");
   assert.equal(await page.locator("#source-panel").isVisible(), false);
+  const untimed = page.locator('a.ts[data-anchor="tx-seg-000004"]').first();
+  assert.equal(await untimed.getAttribute("data-ms"), null);
+  assert.equal((await untimed.textContent()).trim(), "전사 4");
+  await page.locator(".citation-toggle").first().click();
+  await untimed.click();
+  assert.equal(await page.locator("#tx-seg-000004 .transcript-time").count(), 0);
+  assert.ok((await page.locator("#tx-seg-000004").textContent()).includes("시간 정보 없음"));
+  assert.ok((await page.locator("#tx-seg-000004").textContent()).includes("보존한 문장에는 시간 정보가 없습니다."));
+  const unchangedTime = await page.locator("video").evaluate((video) => video.currentTime);
+  assert.ok(unchangedTime >= 3.9 && unchangedTime <= 4.1, "an untimed citation must not invent a seek position");
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     await page.evaluate(
@@ -199,7 +243,7 @@ test("real native seek, Korean PDF, Markdown, images, retry links and offline do
   await offline.goto(pathToFileURL(path.join(f.out, "index.html")).href);
   assert.equal(await offline.locator("h1").textContent(), f.data.report.title);
   await offline.getByRole("button", { name: "원본 열기", exact: true }).click();
-  assert.equal(await offline.locator("#transcript p").count(), 3);
+  assert.equal(await offline.locator("#transcript p").count(), 4);
 });
 
 test("YouTube failure preserves transcript and external timestamp fallback", {

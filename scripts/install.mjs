@@ -8,6 +8,7 @@ import {
   readdir,
   readFile,
   readlink,
+  realpath,
   rename,
   rm,
   symlink,
@@ -17,7 +18,6 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isMain, optionsFor, result, runCli } from "../lib/cli.mjs";
 import { AppError, exists, issue } from "../lib/io.mjs";
-import { rendererIdentity } from "../lib/output.mjs";
 
 const PARTS = [
   "SKILL.md",
@@ -114,6 +114,23 @@ const notOwned = (target) =>
     `${target} exists and is not a previous install; remove it or choose another --target.`,
     3,
   );
+async function dependencyDirectory(source) {
+  try {
+    const directory = await realpath(path.join(source, "node_modules"));
+    if (!(await lstat(directory)).isDirectory()) throw new Error();
+    const pkg = JSON.parse(await readFile(path.join(source, "package.json"), "utf8"));
+    for (const name of Object.keys(pkg.dependencies ?? {}))
+      if (!(await lstat(path.join(directory, name, "package.json"))).isFile())
+        throw new Error();
+    return directory;
+  } catch {
+    throw new AppError(
+      "CAPABILITY_MISSING",
+      "The source's runtime dependencies are missing or incomplete. Run npm ci in the source directory before installing.",
+      3,
+    );
+  }
+}
 async function installLocked(options, source, target, links) {
   const initiallyPresent = await exists(target);
   if (initiallyPresent && !(await ownedInstall(target))) throw notOwned(target);
@@ -121,6 +138,11 @@ async function installLocked(options, source, target, links) {
   // stage leaves the previous install untouched and usable.
   const stamp = randomUUID().slice(0, 8);
   const staging = `${target}.staging-${stamp}`;
+  const dependencies = options.withDependencies === false
+    ? null : await dependencyDirectory(source);
+  // Check dependencies before importing the renderer, so a fresh checkout gets a
+  // useful install error rather than a top-level module-resolution exception.
+  const { rendererIdentity } = await import("../lib/output.mjs");
   const identity = await rendererIdentity();
   const dropStaging = async () => {
     await setWritable(staging, true).catch(() => {});
@@ -131,12 +153,16 @@ async function installLocked(options, source, target, links) {
     // `withDependencies: false` is an offline-test seam (skips copying node_modules).
     for (const part of PARTS.filter(
       (p) => options.withDependencies !== false || p !== "node_modules",
-    ))
-      if (await exists(path.join(source, part)))
-        await cp(path.join(source, part), path.join(staging, part), {
+    )) {
+      const from = part === "node_modules" ? dependencies : path.join(source, part);
+      if (part === "node_modules" || await exists(from))
+        // Materialize a linked dependency root; preserve relative links inside it
+        // (such as .bin) so the installed copy remains independent of its source.
+        await cp(from, path.join(staging, part), {
           recursive: true,
           verbatimSymlinks: true,
         });
+    }
     await writeFile(
       path.join(staging, MARKER),
       `${JSON.stringify({ ...identity, source, installedAt: new Date().toISOString() }, null, 2)}\n`,

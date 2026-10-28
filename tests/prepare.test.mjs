@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { chmod, mkdir, writeFile, rm, readFile } from "node:fs/promises";
+import { access, chmod, mkdir, readdir, writeFile, rm, readFile, symlink } from "node:fs/promises";
 import path from "node:path";
 import { fixture, sampleData } from "./helpers.mjs";
 import { prepare } from "../scripts/prepare.mjs";
@@ -12,6 +12,101 @@ import { jsonBytes, readJson } from "../lib/io.mjs";
 import { fakeTool } from "./fake-tool.mjs";
 
 const execute = promisify(execFile);
+
+test("preflight ignores media tools that only exist in an extra POSIX shell PATH", {
+  skip: process.platform === "win32",
+}, async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const customBin = path.join(f.root, "user-tools"), marker = path.join(f.root, "ambient-tool-ran");
+  await mkdir(customBin);
+  for (const name of ["ffmpeg", "ffprobe"])
+    await fakeTool(path.join(customBin, name), `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, 'ran'); console.log('ambient-only media tool');`);
+  await execute(process.execPath, ["scripts/prepare.mjs", "--request", f.args.request,
+    "--work-dir", f.work, "--check"], {
+    env: { ...process.env, PATH: customBin }, timeout: 30000,
+  });
+  await assert.rejects(access(marker), "preflight must use the extraction tool environment");
+  const caps = (await readJson(path.join(f.work, "capabilities.json"))).data;
+  for (const name of ["ffmpeg", "ffprobe"])
+    assert.notEqual(caps[name].version, "ambient-only media tool");
+});
+
+test("Windows preflight and actual extraction resolve relative PATH from fresh child directories", {
+  skip: process.platform !== "win32",
+}, async (t) => {
+  const f = await acquisition(t);
+  const callerTools = path.join(f.root, "tools"), workTools = path.join(f.work, "tools");
+  const marker = path.join(f.root, "media-tool-calls.jsonl");
+  await Promise.all([mkdir(callerTools), mkdir(workTools)]);
+  for (const name of ["ffmpeg", "ffprobe"]) {
+    const found = await execute(path.join(process.env.SystemRoot, "System32", "where.exe"), [name]);
+    const executable = found.stdout.split(/\r?\n/).find((file) => file.toLowerCase().endsWith(".exe"));
+    assert.ok(executable, `real ${name} must be available for the extraction regression`);
+    for (const [directory, origin] of [[callerTools, "caller"], [workTools, "work"]])
+      await fakeTool(path.join(directory, name), `
+import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
+fs.appendFileSync(${JSON.stringify(marker)}, JSON.stringify({origin:${JSON.stringify(origin)},cwd:process.cwd()})+'\\n');
+const result=spawnSync(${JSON.stringify(executable)},process.argv.slice(2),{encoding:'utf8'});
+process.stdout.write(result.stdout??'');
+process.stderr.write(result.stderr??'');
+process.exit(result.status??1);
+`);
+  }
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "PATH"));
+  const args = [path.resolve("scripts/prepare.mjs"), "--request", f.args.request, "--work-dir", f.work];
+  await execute(process.execPath, [...args, "--check"], {
+    cwd: f.root, env: { ...env, PATH: "tools" }, timeout: 30000,
+  });
+  let caps = (await readJson(path.join(f.work, "capabilities.json"))).data;
+  for (const name of ["ffmpeg", "ffprobe"])
+    assert.deepEqual(caps[name], { status: "unavailable", version: null });
+  await assert.rejects(execute(process.execPath, args, {
+    cwd: f.root, env: { ...env, PATH: "tools" }, timeout: 30000,
+  }), (error) => error.code === 3 && JSON.parse(error.stdout).issues.some((issue) => issue.code === "CAPABILITY_MISSING"));
+  await assert.rejects(access(marker), "neither preflight nor extraction may resolve tools from the caller or outer job directory");
+
+  const actual = await execute(process.execPath, args, {
+    cwd: f.root, env: { ...env, PATH: "../tools" }, timeout: 30000,
+  });
+  assert.equal(JSON.parse(actual.stdout).status, "ok");
+  caps = (await readJson(path.join(f.work, "capabilities.json"))).data;
+  for (const name of ["ffmpeg", "ffprobe"]) assert.equal(caps[name].status, "available");
+  assert.equal((await readJson(path.join(f.work, "evidence.json"))).data.segments.length, 3);
+  const calls = (await readFile(marker, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+  assert.ok(calls.every((call) => call.origin === "work" && path.dirname(call.cwd).toLowerCase() === f.work.toLowerCase()));
+  assert.ok(calls.some((call) => path.basename(call.cwd).startsWith("preflight-")));
+  assert.ok(calls.some((call) => path.basename(call.cwd).startsWith("ingest-")));
+  assert.ok((await readdir(f.work)).every((name) => !name.startsWith("preflight-")), "temporary probes must be removed");
+});
+
+test("preflight rejects directories for supplied runtime files and accepts file aliases", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const directory = path.join(f.root, "browser-directory");
+  await mkdir(directory);
+  const paths = { "local-asr-executable": directory, "local-asr-gpu-executable": directory,
+    "local-asr-model": directory, "browser-executable": directory,
+    "tesseract-executable": directory, "yt-dlp-executable": directory };
+  await prepare({ request: f.args.request, "work-dir": f.work, ...paths, check: true });
+  let caps = (await readJson(path.join(f.work, "capabilities.json"))).data;
+  for (const name of ["localAsrExecutable", "localAsrGpuExecutable", "localAsrModel", "pdfBrowser", "ocr", "ytDlp"])
+    assert.equal(caps[name].status, "unavailable", `${name} must be a file`);
+  const accepted = [process.execPath];
+  if (process.platform !== "win32") {
+    const alias = path.join(f.root, "browser-alias");
+    await symlink(process.execPath, alias);
+    accepted.push(alias);
+  }
+  for (const browser of accepted) {
+    await prepare({ request: f.args.request, "work-dir": f.work,
+      "browser-executable": browser, check: true });
+    caps = (await readJson(path.join(f.work, "capabilities.json"))).data;
+    assert.equal(caps.pdfBrowser.status, "available", "explicit regular-file aliases remain eligible for the actual browser launch check");
+  }
+});
+
 async function acquisition(t) {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));

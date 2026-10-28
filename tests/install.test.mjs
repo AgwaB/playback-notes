@@ -15,11 +15,95 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { install } from "../scripts/install.mjs";
 
 const windows = process.platform === "win32";
 const linkDirectory = (target, link) =>
   symlink(target, link, windows ? "junction" : "dir");
+const execute = promisify(execFile);
+
+async function isolatedInstaller(t) {
+  const { cp, chmod, lstat, readdir, realpath } = await import("node:fs/promises");
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "vs-install-dependencies-")));
+  t.after(async () => {
+    const writable = async (file) => {
+      const info = await lstat(file);
+      if (info.isSymbolicLink()) return;
+      await chmod(file, info.mode | 0o200);
+      if (info.isDirectory()) for (const name of await readdir(file)) await writable(path.join(file, name));
+    };
+    await writable(root);
+    await rm(root, { recursive: true, force: true });
+  });
+  const source = path.join(root, "source"), target = path.join(root, "installed");
+  await mkdir(path.join(source, "scripts"), { recursive: true });
+  await mkdir(path.join(source, "lib"));
+  const repo = fileURLToPath(new URL("..", import.meta.url));
+  for (const part of ["scripts/install.mjs", "lib/cli.mjs", "lib/io.mjs"])
+    await cp(path.join(repo, part), path.join(source, part));
+  await writeFile(path.join(source, "package.json"), JSON.stringify({ type: "module", dependencies: { "vs-install-probe": "1.0.0" } }));
+  // The fixture uses the real installer but a tiny renderer dependency: no network
+  // install or copied development node_modules can mask the packaging boundary.
+  await writeFile(path.join(source, "lib/output.mjs"), `import value from 'vs-install-probe'; export async function rendererIdentity() { return { name: value, version: '1', sha256: '${"a".repeat(64)}' }; }`);
+  await writeFile(path.join(source, "scripts/probe.mjs"), "import value from 'vs-install-probe'; console.log(value);");
+  const dependencies = async (directory) => {
+    const pkg = path.join(directory, "vs-install-probe");
+    await mkdir(pkg, { recursive: true });
+    await writeFile(path.join(pkg, "package.json"), JSON.stringify({ name: "vs-install-probe", version: "1.0.0", type: "module", main: "index.mjs", dependencies: { "vs-install-helper": "1.0.0" } }));
+    await writeFile(path.join(pkg, "index.mjs"), "export { default } from 'vs-install-helper';");
+    const helper = path.join(directory, "vs-install-helper");
+    await mkdir(helper);
+    await writeFile(path.join(helper, "package.json"), JSON.stringify({ name: "vs-install-helper", version: "1.0.0", type: "module", main: "index.mjs" }));
+    await writeFile(path.join(helper, "index.mjs"), "export default 'self-contained dependency';");
+  };
+  const run = (file, args = []) => execute(process.execPath, [file, ...args], {
+    cwd: root, env: { ...process.env, NODE_PATH: "" }, timeout: 20000, windowsHide: true,
+  });
+  return { root, source, target, dependencies, run };
+}
+
+test("install refuses missing or incomplete local dependencies even when an ancestor can resolve them", async (t) => {
+  const f = await isolatedInstaller(t);
+  await f.dependencies(path.join(f.root, "node_modules"));
+  assert.equal((await f.run(path.join(f.source, "scripts/probe.mjs"))).stdout.trim(), "self-contained dependency");
+  for (const incomplete of [false, true]) {
+    if (incomplete) await mkdir(path.join(f.source, "node_modules"));
+    await assert.rejects(f.run(path.join(f.source, "scripts/install.mjs"), ["--target", f.target]), (error) => {
+      assert.equal(error.code, 3);
+      const envelope = JSON.parse(error.stdout);
+      assert.equal(envelope.status, "needs-input");
+      assert.equal(envelope.issues[0].code, "CAPABILITY_MISSING");
+      assert.match(envelope.issues[0].message, /npm ci/);
+      assert.doesNotMatch(error.stderr, /ERR_MODULE_NOT_FOUND/);
+      return true;
+    });
+    await assert.rejects(access(f.target));
+    await assert.rejects(access(`${f.target}.install-lock`));
+  }
+});
+
+test("install materializes a linked dependency root and remains usable after source and shared dependencies move", async (t) => {
+  const { lstat, rename } = await import("node:fs/promises");
+  const f = await isolatedInstaller(t);
+  const shared = path.join(f.root, "shared-tree", "node_modules");
+  await f.dependencies(shared);
+  await mkdir(path.join(shared, ".bin"));
+  if (windows) await writeFile(path.join(shared, ".bin/probe.cmd"), "@echo fixture\r\n");
+  else await symlink("../vs-install-probe/index.mjs", path.join(shared, ".bin/probe"));
+  await linkDirectory(shared, path.join(f.source, "node_modules"));
+  const installed = JSON.parse((await f.run(path.join(f.source, "scripts/install.mjs"), ["--target", f.target])).stdout);
+  assert.equal(installed.status, "ok");
+  const copied = await lstat(path.join(f.target, "node_modules"));
+  assert.ok(copied.isDirectory() && !copied.isSymbolicLink());
+  if (!windows) assert.equal(await readlink(path.join(f.target, "node_modules/.bin/probe")), "../vs-install-probe/index.mjs");
+  // Both paths are inside this test's own mkdtemp root; the original dependency
+  // location no longer exists when the new process loads the installed module.
+  await rename(f.source, path.join(f.root, "source-unavailable"));
+  await rename(shared, path.join(f.root, "dependencies-unavailable"));
+  assert.equal((await f.run(path.join(f.target, "scripts/probe.mjs"))).stdout.trim(), "self-contained dependency");
+});
 
 test("install makes files read-only, relinks only directory links, and replaces only its own previous install", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "vs-install-"));

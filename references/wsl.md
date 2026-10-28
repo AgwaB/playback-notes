@@ -46,8 +46,10 @@ change a user's security settings. If a permitted environment cannot expose the
 device, use the CPU or ask the user how to proceed.
 
 Long CPU inference can exceed the default one-hour `asrTimeoutMs`. Choose an
-appropriate explicit limit with the user, and distinguish a host/test runner's
-shorter deadline from the skill's ASR deadline. Automatic transcription can
+appropriate explicit limit for the authorized job, tell the user about the wait,
+and preserve any user-specified limit. Distinguish a host/test runner's shorter
+deadline from the skill's ASR deadline; poll a running session instead of restarting
+it when a tool wait returns early. Automatic transcription can
 omit, translate or romanize speech when languages switch, and timestamps can be
 inaccurate; check mixed-language passages against the source rather than merging
 unverified alternative transcriptions.

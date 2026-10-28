@@ -4,13 +4,13 @@ These are **host tool calls**, not commands the user must learn. Substitute abso
 
 ## Installation and capabilities
 
-Install the package's pinned dependencies with `npm ci` in the skill directory after installation has been authorized. Supported Node.js versions are **24.15 or later in the 24.x line, or 26+** (`^24.15.0 || >=26.0.0`); Node 25 is excluded. `npm ci` does not install Chromium, an ASR model or a speech engine. No API key is needed.
+After installation has been authorized, run `npm ci` in the source checkout before `scripts/install.mjs`. The installer copies those dependencies into the installed skill; do not run `npm ci` in its read-only directory. Supported Node.js versions are **24.15 or later in the 24.x line, or 26+** (`^24.15.0 || >=26.0.0`); Node 25 is excluded. `npm ci` does not install Chromium, an ASR model or a speech engine. No API key is needed.
 
 Optional tools are not installed automatically:
 
-- `ffmpeg` / `ffprobe`: local/direct media inspection and approved local transcription preparation.
+- `ffmpeg` / `ffprobe`: local/direct media inspection and approved local transcription preparation. On macOS/Linux/WSL they must be in `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin` or `/bin`; shell-only PATH additions are not used. On Windows, use absolute directories in PATH. `prepare --check` probes with the same tool environment and working-directory layout as extraction.
 
-- Chromium/Chrome: PDF only. Pass its existing executable explicitly; no browser download occurs.
+- Chromium/Chrome: PDF only. Pass its existing executable explicitly; a package-manager symlink is accepted. No browser download occurs.
 - Compatible `whisper.cpp` executable and an existing model: only for approved local ASR, subject to the support matrix.
 
 Windows uses native `.exe` tools and directory junctions for installation. See the
@@ -89,7 +89,9 @@ When local ASR is approved, an optional `--local-asr-gpu-executable /absolute/wh
 
 An `ASR_GPU_FALLBACK` evidence warning reports CPU fallback and, on WSL when `/dev/dxg` is inaccessible, points to GPU support or host device-access policy as possible causes. It does not establish which cause applies. WSL has its own Linux tool paths and host settings; see [WSL setup](wsl.md). The normal `asrTimeoutMs` is one hour, which may be too short for long CPU jobs. Pick a larger explicit budget when appropriate, rather than treating a test harness timeout as proof that transcription cannot finish.
 
-ASR segment times are estimates: check cited times against the source, especially after long pauses or language changes. Built-in whisper.cpp VAD is not enabled by this adapter. In a Windows 11 test, its default settings omitted detected English; splitting at a clear silence recovered it in that sample, but both energy-based silence detection and VAD missed recoverable quiet speech in other synthetic samples. Do not discard audio solely because it was classified as silence.
+ASR segment times are estimates: check cited times against the source, especially after long pauses or language changes. If a fully parsed local-ASR cue starts or ends beyond the known media duration, its text and original SRT are preserved while both evidence timestamps become unknown (`null`). Inspect private `raw.localAsrTiming` and the `TIMING_UNAVAILABLE` warning; no time is clipped or invented, and this does not establish that the text was spoken. Supplied subtitles remain strict. For other recognized ASR validation failures, the error can name a private `raw/asr-failures/<attempt>/` directory containing `transcript.srt` and a request-bound `receipt.json`. This is diagnostic data, not validated evidence or a resumable cache; inspect the named attempt rather than an older failure.
+
+Built-in whisper.cpp VAD is not enabled by this adapter. In a Windows 11 test, its default settings omitted detected English; splitting at a clear silence recovered it in that sample, but both energy-based silence detection and VAD missed recoverable quiet speech in other synthetic samples. Do not discard audio solely because it was classified as silence.
 
 ## Automatic ko-en recheck
 
@@ -97,7 +99,7 @@ For explicitly requested Korean/English mixed speech, add `--local-asr-code-swit
 
 Detection is batched to reuse the loaded model, capped at 120 eligible segments spread across the source. At most 24 retries and two additional minutes are allowed, within the existing overall ASR timeout. GPU/CPU selection follows the successful primary runtime. Only exact digital silence is skipped; quiet speech is not discarded. If optional recheck tooling fails, retained primary text and a limited-recheck warning remain; cancellation of the main job still cancels. No model, driver or service is installed.
 
-`raw/extraction.json` retains the original SRT in `localAsr` and the mode, scan counts, decisions and changes in `localAsrLanguageRecheck`. Evidence uses the accepted text with the **original segment intervals**, which remain estimates. `ASR_LANGUAGE_RECHECK` reports changes and incomplete rechecks. The mode is part of the evidence cache identity. Plain prepare calls and other language pairs keep the existing behavior; the option itself does not authorize ASR or downloads.
+`raw/extraction.json` retains the original SRT in `localAsr` and the mode, scan counts, decisions and changes in `localAsrLanguageRecheck`. Evidence uses the accepted text with the **original segment intervals**, which remain estimates; the separate source-duration guard can still mark an impossible interval unknown. `ASR_LANGUAGE_RECHECK` reports changes and incomplete rechecks. The mode is part of the evidence cache identity. Plain prepare calls and other language pairs keep the existing behavior; the option itself does not authorize ASR or downloads.
 
 On two actual mixed interviews this recovered selected Korean passages and a romanized word, while names and some words remained wrong. On 78 recorded mixed-language evaluation utterances it revised one mistranslated Korean segment and left the other outputs unchanged. These narrow tests do not establish a general accuracy rate. The separate review tool below remains useful for uncertain passages.
 

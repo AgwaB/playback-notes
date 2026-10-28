@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { access, readFile, stat } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import {
@@ -18,16 +18,15 @@ import { makeEvidence, chunkDocument, indexEvidence } from "../lib/evidence.mjs"
 import { normalizeRequest } from "../lib/validation.mjs";
 import { isMain, optionsFor, required, result, runCli } from "../lib/cli.mjs";
 import { validateCodeSwitch } from "../lib/asr-language-recheck.mjs";
+import { isolatedEnvironment } from "../lib/runtime.mjs";
 
-function tool(command) {
+function tool(command, workDir) {
   const result = spawnSync(command, ["-version"], {
     timeout: 5000,
     maxBuffer: 4096,
     encoding: "utf8",
-    env: {
-      PATH: process.env.PATH,
-      ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-    },
+    env: isolatedEnvironment(workDir),
+    cwd: workDir,
     windowsHide: true,
   });
   return {
@@ -40,29 +39,37 @@ async function provided(file, executable = false) {
   if (!file) return { status: "unavailable", version: null };
   try {
     await access(file, executable ? constants.X_OK : constants.R_OK);
+    if (!(await stat(file)).isFile()) return { status: "unavailable", version: null };
     return { status: "available", version: null };
   } catch {
     return { status: "unavailable", version: null };
   }
 }
-async function capabilities(options) {
-  return {
-    schemaVersion: 1,
-    node: { status: "available", version: process.version },
-    extractor: { status: "available", version: "0.25.3" },
-    ffmpeg: tool("ffmpeg"),
-    ffprobe: tool("ffprobe"),
-    localAsrExecutable: await provided(options["local-asr-executable"], true),
-    localAsrGpuExecutable: await provided(options["local-asr-gpu-executable"], true),
-    localAsrModel: await provided(options["local-asr-model"]),
-    pdfBrowser: await provided(options["browser-executable"], true),
-    ocr: await provided(
-      options["ocr-executable"] ?? options["tesseract-executable"],
-      true,
-    ),
-    ytDlp: await provided(options["yt-dlp-executable"], true),
-    hostVision: { status: "unknown", version: null },
-  };
+async function capabilities(options, workDir) {
+  // Extraction launches tools inside a fresh child directory, not the outer job.
+  // Match that boundary so relative Windows PATH entries resolve identically.
+  const probeDir = await mkdtemp(path.join(workDir, "preflight-"));
+  try {
+    return {
+      schemaVersion: 1,
+      node: { status: "available", version: process.version },
+      extractor: { status: "available", version: "0.25.3" },
+      ffmpeg: tool("ffmpeg", probeDir),
+      ffprobe: tool("ffprobe", probeDir),
+      localAsrExecutable: await provided(options["local-asr-executable"], true),
+      localAsrGpuExecutable: await provided(options["local-asr-gpu-executable"], true),
+      localAsrModel: await provided(options["local-asr-model"]),
+      pdfBrowser: await provided(options["browser-executable"], true),
+      ocr: await provided(
+        options["ocr-executable"] ?? options["tesseract-executable"],
+        true,
+      ),
+      ytDlp: await provided(options["yt-dlp-executable"], true),
+      hostVision: { status: "unknown", version: null },
+    };
+  } finally {
+    await rm(probeDir, { recursive: true, force: true });
+  }
 }
 // A user-owned preference applies only to its matching explicit CPU runtime and model.
 export async function preferredGpu(options, request, preferencePath) {
@@ -91,7 +98,7 @@ export async function prepare(options, { asrPreferencePath = path.join(os.homedi
   const request = normalizeRequest((await readJson(options.request)).data);
   options = await preferredGpu(options, request, asrPreferencePath);
   return withLock(options["work-dir"], async (workDir) => {
-    const caps = await capabilities(options);
+    const caps = await capabilities(options, workDir);
     await atomicWrite(workDir, "capabilities.json", jsonBytes(caps));
     if (options.check)
       return result(
@@ -105,7 +112,11 @@ export async function prepare(options, { asrPreferencePath = path.join(os.homedi
                 .filter(([, value]) => value?.status === "unavailable")
                 .map(([name]) => name)
                 .join(", ") || "none"
-            }. Optional tools require a user decision before installation; host vision is not inferred. capabilities.json reflects the options passed to this call.`,
+            }. Optional tools require a user decision before installation; host vision is not inferred. capabilities.json reflects the options passed to this call.${
+              process.platform !== "win32" && [caps.ffmpeg, caps.ffprobe].some((cap) => cap.status === "unavailable")
+                ? " Media tools must be available in the extraction worker's tool directories: /opt/homebrew/bin, /usr/local/bin, /usr/bin or /bin."
+                : ""
+            }`,
             "warning",
           ),
         ],

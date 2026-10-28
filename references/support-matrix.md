@@ -1,6 +1,6 @@
 # Support and verification boundaries
 
-Last reviewed: **2026-10-27**. This page is the current support-status reference. Older design and verification documents preserve what was known at their recorded version; they do not override this table. “Implemented”, “locally exercised” and “configured in CI” are different claims.
+Last reviewed: **2026-10-28**. This page is the current support-status reference. Older design and verification documents preserve what was known at their recorded version; they do not override this table. “Implemented”, “locally exercised” and “configured in CI” are different claims.
 
 ## Current support summary
 
@@ -10,7 +10,8 @@ Last reviewed: **2026-10-27**. This page is the current support-status reference
 | Default output | HTML + Markdown from one report; PDF only when requested | Requested PDF needs a compatible installed Chrome/Chromium. Its failure remains an incomplete requested export |
 | Windows 11 x64 | Native Node 24.22.1/26.2.0 testing, Unicode paths/junction installation, Chrome/PDF, captions, local OCR and actual Whisper CUDA/CPU paths have been exercised | Different drivers, accounts and codecs can behave differently; check [Windows setup](windows.md) |
 | Windows 10 x64 | Support target; API/runtime compatibility inspected | No Windows 10 PC/VM was available for live execution. ARM64 and UNC were outside the requested validation scope |
-| WSL 2 Ubuntu 26.04 x64 | Actual pi/Codex report flows, OCR, local Whisper, RTX 3080 Ti CUDA and unavailable-GPU CPU fallback exercised | Separate Linux runtimes/settings required. GPU access depends on host execution policy. Long CPU transcription did not complete within the earlier test budget; see [WSL setup](wsl.md) |
+| WSL 2 Ubuntu 26.04 x64 | Actual pi/Codex report flows, OCR, local Whisper, RTX 3080 Ti CUDA, CPU fallback and full 3 h 43 min CPU transcription exercised | Separate Linux runtimes/settings required. GPU access depends on host execution policy. The long CPU run needed an explicit budget above the default hour and retained one overrun cue as untimed; see the dated results below and [WSL setup](wsl.md) |
+| Clean installation / first use | Fresh Windows 11 profile/cache and isolated Ubuntu rootfs: fresh npm dependencies, installed-copy independence, provided-transcript HTML/Markdown/PDF, missing-tool recovery and source playback verified | Not a new Windows VM, independent WSL kernel or new host-account login. Windows used existing tools. The rootfs used a signed Chrome package runtime with its sandbox; normal package service postinstallation was incomplete in that single-UID namespace |
 | macOS | Earlier local report/PDF, ASR, Apple Vision OCR and confined BotGuard paths exercised | No new local macOS device run for the current Windows/WSL changes. Hosted-runner regression results are linked below; they do not verify local Metal acceleration or real-video recognition quality |
 | Linux outside WSL | Earlier Debian arm64 and emulated amd64 container core/browser/PDF runs recorded; arm64 local ASR exercised | General native Linux desktop and all GPU/runtime combinations are not certified. Chromium sandbox behavior depends on host/container policy |
 | Hosts | Recorded real Codex/Claude flows on macOS and Windows, and pi/Codex flows on Windows/WSL | These are scoped executions, not certification of every host version, automatic discovery or resume behavior |
@@ -18,6 +19,12 @@ Last reviewed: **2026-10-27**. This page is the current support-status reference
 | CI | [Cross-platform workflow](https://github.com/AgwaB/video-summarizer/blob/main/.github/workflows/windows.yml) runs Windows, Linux and macOS tests with minimum Node 24.15.0 and current 26; browser/PDF jobs exercise explicit tools | Check the [Actions runs](https://github.com/AgwaB/video-summarizer/actions/workflows/windows.yml) for the exact commit and all six job results. Local tests and workflow configuration alone do not establish a remote pass |
 
 This is a reusable host-agent skill, not a standalone summarization service. Detailed historical measurements below explain the evidence and its limits; test counts belong to their recorded revision, not automatically to the current tree.
+
+On **2026-10-28**, local regression passed **208 Windows tests (5 platform skips)** and **202 WSL tests (11 platform skips)**, with **37 browser/PDF tests on each**. Core suites used concurrency 2. Fresh installs remained usable after their source and shared dependency directories were made unavailable. The actual Windows/WSL managed installs were refreshed while preserving host links, authentication and preferences.
+
+The real **13,413.761 s** English source completed CPU-only Whisper turbo Q5 transcription in **8,721.841 s** using four native threads and an explicit eight-hour ASR budget. All **5,145** raw SRT cue texts and their order were retained in **21** evidence chunks. One final interval (**13,413.180–13,443.160 s**) exceeded the source duration: its text and original interval were preserved, while its evidence timestamps became unknown. The other 5,144 intervals remained within source bounds. This is preservation and duration validation, not proof that every word or timestamp is accurate. Three frozen-caption anchors at the beginning, around two hours and near the end were found in their expected approximate neighborhoods. Current installed-skill cache reuse preserved evidence and ledger bytes. Concurrent workloads prevent treating the run as a controlled hardware benchmark.
+
+An earlier full CPU attempt failed validation after **9,084.135 s**; its native SRT was lost during the old cleanup, so its exact rejection cause remains unproven. A separate real 90-second tail reproduced an interval ending 27.902 seconds beyond its decoded duration. The resulting fix preserves out-of-duration local-ASR text as untimed, keeps supplied subtitles strict, and retains other rejected native transcripts with per-attempt private diagnostic receipts. Local test receipts are under `artifacts/clean-first-run-20261027/` and are not distributed with the skill.
 
 ## Capability behavior and recorded verification
 
