@@ -357,3 +357,40 @@ test("round 6: swap, permission and link failures roll back to the previous inst
   );
   assert.equal(await readlink(hostLink), target);
 });
+
+test("round 7 F5: a directory swapped in between the ownership check and the rename is restored, never deleted", async (t) => {
+  const { chmod, readdir, readFile, rename } = await import("node:fs/promises");
+  const root = await mkdtemp(path.join(os.tmpdir(), "vs-install7-"));
+  const unlock = async (p) => {
+    const s = await stat(p).catch(() => null);
+    if (!s) return;
+    await chmod(p, s.mode | 0o200);
+    if (s.isDirectory()) for (const n of await readdir(p)) await unlock(path.join(p, n));
+  };
+  t.after(async () => {
+    await unlock(root);
+    await rm(root, { recursive: true, force: true });
+  });
+  const target = path.join(root, "agents", "video-summarizer");
+  await mkdir(path.dirname(target));
+  assert.equal((await install({ target, withDependencies: false })).status, "ok");
+  const ours = path.join(root, "moved-install");
+  await assert.rejects(
+    install({
+      target,
+      withDependencies: false,
+      beforeSwap: async () => {
+        // Someone moves our install away and puts their own directory (with a copied
+        // marker) at the target after the check.
+        await chmod(target, 0o755);
+        await rename(target, ours);
+        await mkdir(target);
+        await writeFile(path.join(target, ".video-summarizer-install.json"), await readFile(path.join(ours, ".video-summarizer-install.json")));
+        await writeFile(path.join(target, "keep.txt"), "mine");
+      },
+    }),
+    { code: "OUTPUT_EXISTS" },
+  );
+  assert.equal(await readFile(path.join(target, "keep.txt"), "utf8"), "mine");
+  assert.deepEqual((await readdir(path.dirname(target))).sort(), ["video-summarizer"], "no staging, previous or lock left");
+});

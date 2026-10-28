@@ -31,7 +31,7 @@ Start from `scripts/scaffold.mjs --request "$JOB/request.json" --evidence "$JOB/
 { "text": "Plain text, not HTML.", "attribution": "interpretation", "citations": [{ "kind": "segment", "id": "seg-000002" }] }
 ```
 
-`attribution` is exactly `source` or `interpretation`. Each substantive statement needs at least one citation. Cite the contiguous transcript run a statement rests on (one or two runs, not every segment it touches). The renderer collapses *strictly adjacent* timed segment citations into one chip labelled `first start–last start` (cue start times, not the interval's end) that seeks to the first; citations that skip a segment stay separate chips. A citation is a `segment` or an inspected `frame` ID; its timestamp is resolved from evidence, not authored independently. Inference is allowed but visibly labeled; it still needs grounding.
+`attribution` is exactly `source` or `interpretation`. Each substantive statement needs at least one citation. Cite the contiguous transcript run a statement rests on (one or two runs, not every segment it touches). Every citation stays its own link: in the HTML the first is shown and the rest fold behind a “more” disclosure, while print, Markdown and no-JavaScript reading list them all. A citation is a `segment` or an inspected `frame` ID; its timestamp is resolved from evidence, not authored independently. Inference is allowed but visibly labeled; it still needs grounding.
 
 ## Blocks
 
@@ -56,7 +56,7 @@ For a figure, `caption.citations` must cite the same frame and `analysis.inspect
 
 ### Diagram block
 
-A diagram is an authored visualization, not evidence; its `caption` must cite the segments it summarizes and is normally `interpretation`. Draw only when a reader learns more than from a paragraph or table (a ranked hierarchy, a causal chain); otherwise use a table or list. Budget, enforced by validation: 2–9 nodes, ≤12 edges, at most 2 `focal` nodes, edge labels ≤14 characters, `flow` must be a connected acyclic graph, `stack` has no edges (top node first). The renderer owns layout, colors and markup (orthogonal connectors, hairline borders, no shadows). Markdown receives a text fallback: nodes with sublabels, then one `A → B (label)` line per edge, then the caption. The SVG scales to the page width; on narrow phones a 9-node flow becomes small, so prefer few, short labels and keep any condition that matters in the caption or prose. Design rules follow diagram-design (MIT).
+A diagram is an authored visualization, not evidence; its `caption` must cite the segments it summarizes and is normally `interpretation`. Draw only when a reader learns more than from a paragraph or table (a ranked hierarchy, a causal chain); otherwise use a table or list. Budget, enforced by validation: 2–9 nodes, ≤12 edges, at most 2 `focal` nodes, edge labels ≤14 characters, `flow` must be a connected acyclic graph, `stack` has no edges (top node first). The renderer owns layout, colors and markup (orthogonal connectors, hairline borders, no shadows). Markdown receives a text fallback: nodes with sublabels, then one `A → B (label)` line per edge, then the caption. The SVG keeps its drawn size and scrolls sideways on narrow screens instead of shrinking, so prefer few, short labels and keep any condition that matters in the caption or prose. Design rules follow diagram-design (MIT).
 
 ```json
 { "type": "diagram", "kind": "flow", "id": "cause-chain", "title": "…", "alt": "One sentence about the content.",

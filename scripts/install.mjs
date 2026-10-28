@@ -180,13 +180,22 @@ async function installLocked(options, source, target, links) {
     await dropStaging();
     throw notOwned(target);
   }
+  // The exact directory checked: whatever is renamed aside must be this one, or a
+  // replacement made between the check and the rename would be deleted as "previous".
+  const identityOf = async (dir) => {
+    const info = await lstat(dir, { bigint: true });
+    return `${info.dev}:${info.ino}`;
+  };
+  const claimed = present ? await identityOf(target) : null;
+  await options.beforeSwap?.(); // offline-test seam
   // Everything from here to the last link is one transaction: on any failure the links are
   // restored, the new copy removed and the previous install moved back, read-only.
   // macOS refuses to rename a directory that is itself read-only, so only the two top
   // directories are made writable for the swap and read-only again afterwards.
   const topWritable = (dir, on) => chmod(dir, on ? 0o755 : 0o555);
   const previous = present ? `${target}.previous-${stamp}` : null;
-  let swapped = false;
+  let swapped = false,
+    foreign = false;
   const relinked = []; // { link, before: string|null, backup: string|null }
   const fault = (stage) => {
     if (options.faultAt === stage) throw new Error(`injected ${stage} failure`);
@@ -217,9 +226,16 @@ async function installLocked(options, source, target, links) {
   const issues = [];
   try {
     if (previous) {
+      const modeBefore = (await lstat(target)).mode & 0o7777;
       await topWritable(target, true);
       fault("swap");
       await rename(target, previous);
+      if ((await identityOf(previous)) !== claimed || !(await ownedInstall(previous))) {
+        foreign = true;
+        await rename(previous, target).catch(() => {});
+        await chmod(target, modeBefore).catch(() => {});
+        throw notOwned(target);
+      }
     }
     await topWritable(staging, true);
     await rename(staging, target);
@@ -270,9 +286,9 @@ async function installLocked(options, source, target, links) {
       await setWritable(target, true).catch(() => {});
       await rm(target, { recursive: true, force: true }).catch(() => {});
     }
-    if (previous && (await exists(previous)) && !(await exists(target)))
+    if (previous && !foreign && (await exists(previous)) && !(await exists(target)))
       await rename(previous, target).catch(() => {});
-    if (present) await topWritable(target, false).catch(() => {});
+    if (present && !foreign) await topWritable(target, false).catch(() => {});
     await dropStaging();
     throw error;
   }
@@ -285,6 +301,9 @@ async function installLocked(options, source, target, links) {
       });
   if (previous)
     try {
+      // Delete only the very install that was claimed and moved aside.
+      if ((await identityOf(previous)) !== claimed || !(await ownedInstall(previous)))
+        throw new Error("not the claimed install");
       await setWritable(previous, true);
       await rm(previous, { recursive: true, force: true });
     } catch {

@@ -377,6 +377,21 @@ test("ASR segments matching phrases Whisper invents over music are flagged by ID
   assert.doesNotMatch(flagged.message, /seg-000002/);
 });
 
+test("a whisper build that answers neither --version nor --help keeps its finished transcript (round 7 F1)", async () => {
+  const model = path.join(root, "mock-model.bin");
+  await writeFile(model, "offline test placeholder, not a speech model");
+  const executable = await fakeTool(
+    path.join(root, "mock-whisper-noversion"),
+    `import fs from 'node:fs';\nif (process.argv.includes('--version') || process.argv.includes('--help')) process.exit(9);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,100 --> 00:00:00,700\\nKept transcript.\\n');\n`,
+  );
+  const result = await extractSource(
+    request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
+    { workDir: path.join(jobs, "noversion"), localAsrExecutable: executable, localAsrModel: model },
+  );
+  assert.equal(result.segments[0].text, "Kept transcript.");
+  assert.equal(result.extraction.providerVersion, "unknown");
+});
+
 test("the invented-phrase pattern flags credits and outros, not ordinary speech about captions", async () => {
   const { asrInventedForTest: re } = await import("../lib/ingest-worker.mjs");
   for (const t of ["한글자막 by 한효정", "자막 제공: 배달의민족", "시청해주셔서 감사합니다", "구독과 좋아요 부탁드려요", "Thanks for watching!", "Subtitles by the Amara.org community", "字幕由Amara.org社区提供", "ご視聴ありがとうございました"])

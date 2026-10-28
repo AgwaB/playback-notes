@@ -42,7 +42,10 @@ ${gpuBody}
     workDir: dir, timeoutMs: 10000, maxBytes: 65536,
     signal: AbortSignal.timeout(10000),
   };
-  return { dir, cpu, gpu, options, trace: () => readFile(path.join(dir, "trace.log"), "utf8") };
+  // Under heavy load a deadline can fire before a fake tool even starts: no trace yet.
+  const trace = () => readFile(path.join(dir, "trace.log"), "utf8")
+    .catch((error) => (error.code === "ENOENT" ? "" : Promise.reject(error)));
+  return { dir, cpu, gpu, options, trace };
 }
 
 test("positive GPU probe uses the GPU without a CPU retry", async (t) => {
@@ -73,9 +76,10 @@ test("CPU fallback handles no GPU and a missing accelerated executable", async (
 });
 
 test("probe-specific timeout falls back to CPU when the shared deadline has time left", async (t) => {
-  const f = await setup(t, `await new Promise(r => setTimeout(r, 5000));`);
-  f.options.timeoutMs = 1000;
-  f.options.signal = AbortSignal.timeout(10000);
+  // The per-tool budget also bounds the CPU run, so it must leave room for a loaded host.
+  const f = await setup(t, `await new Promise(r => setTimeout(r, 30000));`);
+  f.options.timeoutMs = 4000;
+  f.options.signal = AbortSignal.timeout(30000);
   const result = await transcribeWithAcceleration(f.options);
   assert.equal(result.raw, srt);
   assert.equal(result.backend, "cpu");

@@ -23,7 +23,7 @@ For each `chunks/chunk-NNNNN.json`, write `notes/chunk-NNNNN.json` (private, nex
 }
 ```
 
-Cite the **contiguous run** that supports a claim — every segment ID from the first to the last supporting segment (up to about twelve), not just one anchor. Adjacent citations render as one `start–end` chip, so the reader sees the real span, and the synthesizer inherits honest anchors. Do not cite a marker-only segment.
+Cite the **contiguous run** that supports a claim — every segment ID from the first to the last supporting segment (up to about twelve), not just one anchor. Each citation stays its own link (the HTML folds the extras behind a “more” disclosure), so the reader can open every supporting moment, and the synthesizer inherits honest anchors. Do not cite a marker-only segment.
 
 Rules enforced by `scripts/notes.mjs`: the hash must match the real `evidence.json` bytes; every citation must belong to the note's chunk (or its context segments); every quote must occur literally in its cited segments; 1–80 claims, ≤40 quotes. Notes contain no frames and no HTML. A note is a reading record: write it only after actually reading the chunk.
 

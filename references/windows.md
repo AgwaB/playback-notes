@@ -11,6 +11,7 @@ node scripts/install.mjs --link "$HOME\.claude\skills\video-summarizer,$HOME\.co
 
 설치 대상은 기본적으로 `$HOME\.agents\skills\video-summarizer`이며 `~/`와 `~\`를 모두 처리합니다.
 호스트 연결에는 관리자 권한이나 Developer Mode가 필요 없는 디렉터리 junction을 사용합니다.
+Windows는 junction 위로 이름을 바꿔 덮어쓸 수 없어, 재연결할 때 기존 junction을 잠시 `<link>.previous-<id>`로 옮긴 뒤 새 junction을 둡니다(POSIX의 원자적 교체와 다름). 그 사이에 중단되면 그 이름을 원래 이름으로 되돌리면 됩니다.
 기존 일반 디렉터리는 교체하지 않습니다. 설치 파일은 읽기 전용이지만 디렉터리 ACL은 변경하지 않으므로,
 같은 계정의 파일 추가·교체를 막는 보안 경계는 아닙니다.
 
