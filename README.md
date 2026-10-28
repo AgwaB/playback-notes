@@ -1,50 +1,88 @@
-# Video Summarizer Skill
+<h1 align="center">Video Summarizer</h1>
 
-Give the agent a video link or file, and it reads the evidence to create a **briefing / deep-dive**. The default outputs are **HTML and Markdown**; PDF is generated on request.
+<p align="center">
+  <strong>From videos to readable reports—with the evidence attached.</strong><br>
+  A skill for Claude Code, Codex and pi. No separate API key: the agent you already use writes the report,<br>
+  every claim links to its moment in the video, and the citations are checked before export.
+</p>
 
-```text
-Video link/file → Evidence extraction → Host agent analysis → Validation → Readable report
-```
+<p align="center">
+  <a href="https://github.com/AgwaB/video-summarizer/actions/workflows/windows.yml"><img src="https://img.shields.io/badge/CI-cross--platform-57606a?style=flat-square" alt="Cross-platform CI workflow; open for current results"></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-24.15%2B%20%2824.x%29%20or%2026%2B-417E38?style=flat-square" alt="Node.js 24.15 or later in 24.x, or 26+"></a>
+  <a href="#example-output"><img src="https://img.shields.io/badge/exports-HTML%20%C2%B7%20Markdown%20%C2%B7%20PDF-b5382b?style=flat-square" alt="HTML, Markdown or PDF, as you choose"></a>
+</p>
 
-## Getting started
+<p align="center">
+  <a href="#example-output">Example output</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#usage">Usage</a>
+</p>
 
-1. Use Node.js **24.15 or later in the 24.x line, or 26+**, and run `npm ci` in the repository. Node 25 is not supported.
-2. Install with `node scripts/install.mjs --link ~/.claude/skills/video-summarizer,~/.codex/skills/video-summarizer`. For pi, link `~/.pi/agent/skills/video-summarizer`. For Windows commands, see the [Windows guide](references/windows.md).
-3. Ask something like “Give me a briefing on this video” or “Analyze this file in depth.” Add “Make a PDF too” if needed.
+## Example output
 
-No separate chat app or new summarization model/API key is needed. Your current host agent performs the analysis; the scripts acquire evidence, validate and export. If the host uses a cloud model, transcripts and images sent to it follow that host's data policy.
+Andrej Karpathy's [“[1hr Talk] Intro to Large Language Models”](https://www.youtube.com/watch?v=zjkBMFhNj_g), summarized both ways with this skill:
 
-This is a multilingual skill, not an English/Korean-only tool. Reports follow the user's conversation language unless an explicit report-language preference overrides it; English is the fallback when the user's language is unknown. Source language is independent. Built-in interface labels remain English; UI translation is out of scope. ASR, OCR and font availability depend on the selected local tools and language data.
+![One video becomes two reports: a briefing with 4 key points and 6 sections, and a deep-dive with 5 key points and 18 sections. Every claim links to its timestamp, and each report can be saved as HTML, Markdown or PDF.](references/assets/example-output.png)
 
-## Required tools
+<p align="center">Read the full reports: <a href="examples/karpathy-intro-llms/briefing.md"><strong>Briefing</strong></a> · <a href="examples/karpathy-intro-llms/deep-dive.md"><strong>Deep-dive</strong></a> (Markdown; each timestamp opens the video at that moment)</p>
 
-- Captions or supplied SRT/VTT/TXT files can be processed without a speech recognition model.
-- Local video, audio and scene processing may require `ffmpeg`/`ffprobe`.
-- When captions are unavailable, an approved, already installed Whisper executable and model can transcribe locally. A compatible GPU executable is checked before use; if unavailable, processing falls back to the CPU. Mixed Korean/English transcription can use a limited [language recheck](references/execution.md#automatic-ko-en-recheck) with the same Whisper model.
-- An installed Chrome/Chromium path is needed only when PDF is requested. Tools, models and browsers are not installed automatically during processing.
+<p align="center"><sub>Unofficial summary, not affiliated with or endorsed by the creator. Written from the video's automatic captions; the transcript is not included.</sub></p>
 
-The installed copy defaults to `~/.agents/skills/video-summarizer`, with links from host folders. Do not copy only `SKILL.md`; keep the scripts, references, templates and dependencies together. The installer does not replace existing ordinary directories.
+## How it works
 
-During updates, the previous installation is retained in a `.previous-*` recovery directory, and its path is reported. A new copy rolled back after a failure may remain as `.failed-*`. These copies are not recursively deleted automatically, so extra disk space is needed. After checking the new installation and stopping related runs, inspect the ownership and contents of the retained paths and manually remove only copies you no longer need.
+![Five steps: your video, local evidence, analysis by your agent, validation, and a report in the formats you choose: HTML, Markdown or PDF](references/assets/how-it-works.png)
 
-## Support and limitations
+## Usage
 
-The dated [support matrix](references/support-matrix.md) is the single reference for current OS/host verification coverage. It distinguishes Windows 11, WSL and macOS/Linux experiments from unverified environments such as Windows 10.
+### 1. Install
 
-Speech recognition and OCR can misread names, numbers and language switches. Successful extraction does not guarantee the accuracy of every utterance or screen. Check important quotations against the source. YouTube captions and playback depend on the source service's state.
-
-Source media and private working files stay separate from public output. HTML includes the transcript by default; choose `publishTranscript: false` when sharing externally if needed. Local source video is not copied unless explicitly requested.
-
-## Development checks
+Requires **Node.js 24.15+ within the 24.x line, or 26+** (Node 25 is not supported).
 
 ```bash
-npm run check
-npm test
-TEST_BROWSER_EXECUTABLE='/absolute/path/to/chrome' npm run test:browser
+npx skills add AgwaB/video-summarizer -g
+(cd ~/.agents/skills/video-summarizer && npm ci)
 ```
 
-Repository documentation is written in English, but language-specific processing rules and multilingual test data are allowed and necessary. Checks must not ban a script. Report-language selection follows the [skill instructions](SKILL.md); see the [support matrix](references/support-matrix.md) for capability limits.
+**Both lines are required.** The first installs the skill with the [`skills` CLI](https://github.com/vercel-labs/skills) for the agents you pick, such as Claude Code, Codex and pi. The second installs its dependencies.
 
-The regular tests use real ffmpeg/ffprobe. Browser/PDF tests require Chrome/Chromium and Poppler's `pdftotext`/`pdfinfo`, and are skipped if no browser path is provided. macOS sandbox tests run only on that OS. CI follows the configuration and verification status in the [support matrix](references/support-matrix.md).
+To update or remove it:
 
-[Skill](SKILL.md) · [Execution reference](references/execution.md) · [Windows](references/windows.md) · [WSL](references/wsl.md) · [Troubleshooting](references/troubleshooting.md)
+```bash
+npx skills update video-summarizer -g
+(cd ~/.agents/skills/video-summarizer && npm ci)  # updating removes the dependencies
+
+npx skills remove video-summarizer -g
+```
+
+<details>
+<summary><strong>Alternative:</strong> manual install (read-only copy)</summary>
+
+```bash
+git clone https://github.com/AgwaB/video-summarizer.git
+cd video-summarizer
+npm ci
+node scripts/install.mjs --link ~/.claude/skills/video-summarizer
+```
+
+This installs a read-only copy in `~/.agents/skills/video-summarizer`, where Codex and pi find it. `--link` connects Claude Code; omit it if you don't use Claude Code. To update, pull this repository, run `npm ci`, then repeat the last command.
+
+</details>
+
+On Windows, follow the [PowerShell setup](references/windows.md); on WSL, the [WSL guide](references/wsl.md).
+
+### 2. Ask your agent
+
+Choose how deep the report goes:
+
+| Mode | What you get | Ask with words like | For the 1-hour example |
+|---|---|---|---|
+| **Briefing** | The main conclusions and why they hold | “summarize”, “briefing”, “key points” | 4 key points · 6 sections · ≈ 6 min read |
+| **Deep-dive** | Topic-by-topic explanations with reasoning, examples, caveats and open questions | “in detail”, “deep-dive”, “analyze” | 5 key points · 18 sections · ≈ 14 min read |
+
+```text
+Give me a briefing on this video: <video-url>
+Create a deep-dive on this lecture, in Spanish, and make a PDF too: <video-url>
+Summarize this local video using the SRT file I supplied: <path>
+```
+
+If you don't name the formats, the agent asks which you want: HTML, Markdown, PDF or any combination. Otherwise it asks only for missing information or approval for optional local tools.
