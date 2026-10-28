@@ -163,11 +163,39 @@ test("a quote names its speaker only when every cited segment has that same spea
     (q) => q.querySelector(".quote-speaker")?.textContent ?? null,
   );
   assert.deepEqual(footers.slice(-2), ["— Alice <b>Host</b>", null]);
-  assert.equal(document.querySelectorAll(".quote-speaker b").length, 0, "speaker is text");
+  assert.equal(
+    document.querySelectorAll(".quote-speaker b").length,
+    0,
+    "speaker is text",
+  );
   const markdown = markdownDocument(f.bundle);
   assert.equal(
     markdown.match(/^> — Alice/gm)?.length,
     footers.filter((footer) => footer?.startsWith("— Alice")).length,
   );
   assert.ok(!/^> — Bob/m.test(markdown));
+});
+
+test("right-to-left report languages set the document direction", async (t) => {
+  const { textDirection } = await import("../lib/view.mjs");
+  for (const [language, direction] of [
+    ["ar", "rtl"],
+    ["he", "rtl"],
+    ["fa-IR", "rtl"],
+    ["ur", "rtl"],
+    ["ko", "ltr"],
+    ["en", "ltr"],
+    ["zh-Hant", "ltr"],
+    ["not a tag", "ltr"],
+  ])
+    assert.equal(textDirection(language), direction, language);
+  const f = await fixture({
+    mutate(d) {
+      d.request.outputLanguage = d.report.outputLanguage = "ar";
+    },
+  });
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const document = new JSDOM(htmlDocument(f.bundle)).window.document;
+  assert.equal(document.documentElement.getAttribute("dir"), "rtl");
+  assert.equal(document.documentElement.getAttribute("lang"), "ar");
 });

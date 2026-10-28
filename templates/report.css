@@ -22,6 +22,20 @@ a.ts {
 * {
   box-sizing: border-box;
 }
+/* Each paragraph takes the direction of its own text: English interface text in an
+   Arabic report (or an Arabic quote in an English one) keeps its punctuation in place. */
+p,
+li,
+td,
+th,
+figcaption,
+h1,
+h2,
+h3,
+h4,
+summary {
+  unicode-bidi: plaintext;
+}
 html {
   scroll-behavior: smooth;
 }
@@ -149,11 +163,11 @@ ol.topics {
 }
 ol.topics li {
   margin: 0.4rem 0;
-  padding-left: 0.6rem;
-  border-left: 2px solid transparent;
+  padding-inline-start: 0.6rem;
+  border-inline-start: 2px solid transparent;
 }
 ol.topics li.active {
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
   font-weight: 650;
 }
 ol.topics a {
@@ -193,7 +207,7 @@ li {
   flex-wrap: wrap;
   align-items: center;
   vertical-align: baseline;
-  margin-left: 0.35rem;
+  margin-inline-start: 0.35rem;
 }
 a.ts,
 .citation-toggle {
@@ -220,7 +234,7 @@ a.ts,
   flex-wrap: wrap;
 }
 .technical-diagnostics {
-  padding-left: 1.2rem;
+  padding-inline-start: 1.2rem;
 }
 footer summary {
   cursor: pointer;
@@ -236,12 +250,12 @@ footer details[open] summary {
   border: 1px solid var(--rule);
   border-radius: 0.3rem;
   padding: 0.1rem 0.35rem;
-  margin-right: 0.4rem;
+  margin-inline-end: 0.4rem;
 }
 blockquote {
   margin: 1rem 0;
   padding: 0.75rem 1rem;
-  border-left: 3px solid var(--accent);
+  border-inline-start: 3px solid var(--accent);
   background: var(--surface-2);
 }
 .quote-speaker {
@@ -299,7 +313,7 @@ th,
 td {
   border: 1px solid var(--rule-soft);
   padding: 0.65rem;
-  text-align: left;
+  text-align: start;
   vertical-align: top;
 }
 th {
@@ -393,15 +407,15 @@ footer {
 }
 #transcript p {
   padding: 0.5rem;
-  border-left: 2px solid transparent;
+  border-inline-start: 2px solid transparent;
 }
 #transcript p.current {
   background: var(--accent-tint);
-  border-left-color: var(--accent);
+  border-inline-start-color: var(--accent);
 }
 .transcript-time {
   font: 0.7rem monospace;
-  margin-right: 0.5rem;
+  margin-inline-end: 0.5rem;
   padding: 0.1rem 0.3rem;
 }
 body.pinned {

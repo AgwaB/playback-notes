@@ -68,7 +68,7 @@
     padding: 0.05rem 0.2rem;
   }
   .citations a + a {
-    margin-left: 0.4rem;
+    margin-inline-start: 0.4rem;
   }
   a {
     color: #7c2920;
@@ -145,7 +145,7 @@
     display: inline;
   }
   .source-notes .references h2 {
-    margin-right: 0.4rem;
+    margin-inline-end: 0.4rem;
   }
   footer details {
     display: contents;
