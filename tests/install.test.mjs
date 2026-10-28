@@ -25,60 +25,112 @@ const linkDirectory = (target, link) =>
 const execute = promisify(execFile);
 
 async function isolatedInstaller(t) {
-  const { cp, chmod, lstat, readdir, realpath } = await import("node:fs/promises");
-  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "vs-install-dependencies-")));
+  const { cp, chmod, lstat, readdir, realpath } = await import(
+    "node:fs/promises"
+  );
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "vs-install-dependencies-")),
+  );
   t.after(async () => {
     const writable = async (file) => {
       const info = await lstat(file);
       if (info.isSymbolicLink()) return;
       await chmod(file, info.mode | 0o200);
-      if (info.isDirectory()) for (const name of await readdir(file)) await writable(path.join(file, name));
+      if (info.isDirectory())
+        for (const name of await readdir(file))
+          await writable(path.join(file, name));
     };
     await writable(root);
     await rm(root, { recursive: true, force: true });
   });
-  const source = path.join(root, "source"), target = path.join(root, "installed");
+  const source = path.join(root, "source"),
+    target = path.join(root, "installed");
   await mkdir(path.join(source, "scripts"), { recursive: true });
   await mkdir(path.join(source, "lib"));
   const repo = fileURLToPath(new URL("..", import.meta.url));
   for (const part of ["scripts/install.mjs", "lib/cli.mjs", "lib/io.mjs"])
     await cp(path.join(repo, part), path.join(source, part));
-  await writeFile(path.join(source, "package.json"), JSON.stringify({ type: "module", dependencies: { "vs-install-probe": "1.0.0" } }));
+  await writeFile(
+    path.join(source, "package.json"),
+    JSON.stringify({
+      type: "module",
+      dependencies: { "vs-install-probe": "1.0.0" },
+    }),
+  );
   // The fixture uses the real installer but a tiny renderer dependency: no network
   // install or copied development node_modules can mask the packaging boundary.
-  await writeFile(path.join(source, "lib/output.mjs"), `import value from 'vs-install-probe'; export async function rendererIdentity() { return { name: value, version: '1', sha256: '${"a".repeat(64)}' }; }`);
-  await writeFile(path.join(source, "scripts/probe.mjs"), "import value from 'vs-install-probe'; console.log(value);");
+  await writeFile(
+    path.join(source, "lib/output.mjs"),
+    `import value from 'vs-install-probe'; export async function rendererIdentity() { return { name: value, version: '1', sha256: '${"a".repeat(64)}' }; }`,
+  );
+  await writeFile(
+    path.join(source, "scripts/probe.mjs"),
+    "import value from 'vs-install-probe'; console.log(value);",
+  );
   const dependencies = async (directory) => {
     const pkg = path.join(directory, "vs-install-probe");
     await mkdir(pkg, { recursive: true });
-    await writeFile(path.join(pkg, "package.json"), JSON.stringify({ name: "vs-install-probe", version: "1.0.0", type: "module", main: "index.mjs", dependencies: { "vs-install-helper": "1.0.0" } }));
-    await writeFile(path.join(pkg, "index.mjs"), "export { default } from 'vs-install-helper';");
+    await writeFile(
+      path.join(pkg, "package.json"),
+      JSON.stringify({
+        name: "vs-install-probe",
+        version: "1.0.0",
+        type: "module",
+        main: "index.mjs",
+        dependencies: { "vs-install-helper": "1.0.0" },
+      }),
+    );
+    await writeFile(
+      path.join(pkg, "index.mjs"),
+      "export { default } from 'vs-install-helper';",
+    );
     const helper = path.join(directory, "vs-install-helper");
     await mkdir(helper);
-    await writeFile(path.join(helper, "package.json"), JSON.stringify({ name: "vs-install-helper", version: "1.0.0", type: "module", main: "index.mjs" }));
-    await writeFile(path.join(helper, "index.mjs"), "export default 'self-contained dependency';");
+    await writeFile(
+      path.join(helper, "package.json"),
+      JSON.stringify({
+        name: "vs-install-helper",
+        version: "1.0.0",
+        type: "module",
+        main: "index.mjs",
+      }),
+    );
+    await writeFile(
+      path.join(helper, "index.mjs"),
+      "export default 'self-contained dependency';",
+    );
   };
-  const run = (file, args = []) => execute(process.execPath, [file, ...args], {
-    cwd: root, env: { ...process.env, NODE_PATH: "" }, timeout: 20000, windowsHide: true,
-  });
+  const run = (file, args = []) =>
+    execute(process.execPath, [file, ...args], {
+      cwd: root,
+      env: { ...process.env, NODE_PATH: "" },
+      timeout: 20000,
+      windowsHide: true,
+    });
   return { root, source, target, dependencies, run };
 }
 
 test("install refuses missing or incomplete local dependencies even when an ancestor can resolve them", async (t) => {
   const f = await isolatedInstaller(t);
   await f.dependencies(path.join(f.root, "node_modules"));
-  assert.equal((await f.run(path.join(f.source, "scripts/probe.mjs"))).stdout.trim(), "self-contained dependency");
+  assert.equal(
+    (await f.run(path.join(f.source, "scripts/probe.mjs"))).stdout.trim(),
+    "self-contained dependency",
+  );
   for (const incomplete of [false, true]) {
     if (incomplete) await mkdir(path.join(f.source, "node_modules"));
-    await assert.rejects(f.run(path.join(f.source, "scripts/install.mjs"), ["--target", f.target]), (error) => {
-      assert.equal(error.code, 3);
-      const envelope = JSON.parse(error.stdout);
-      assert.equal(envelope.status, "needs-input");
-      assert.equal(envelope.issues[0].code, "CAPABILITY_MISSING");
-      assert.match(envelope.issues[0].message, /npm ci/);
-      assert.doesNotMatch(error.stderr, /ERR_MODULE_NOT_FOUND/);
-      return true;
-    });
+    await assert.rejects(
+      f.run(path.join(f.source, "scripts/install.mjs"), ["--target", f.target]),
+      (error) => {
+        assert.equal(error.code, 3);
+        const envelope = JSON.parse(error.stdout);
+        assert.equal(envelope.status, "needs-input");
+        assert.equal(envelope.issues[0].code, "CAPABILITY_MISSING");
+        assert.match(envelope.issues[0].message, /npm ci/);
+        assert.doesNotMatch(error.stderr, /ERR_MODULE_NOT_FOUND/);
+        return true;
+      },
+    );
     await assert.rejects(access(f.target));
     await assert.rejects(access(`${f.target}.install-lock`));
   }
@@ -90,19 +142,38 @@ test("install materializes a linked dependency root and remains usable after sou
   const shared = path.join(f.root, "shared-tree", "node_modules");
   await f.dependencies(shared);
   await mkdir(path.join(shared, ".bin"));
-  if (windows) await writeFile(path.join(shared, ".bin/probe.cmd"), "@echo fixture\r\n");
-  else await symlink("../vs-install-probe/index.mjs", path.join(shared, ".bin/probe"));
+  if (windows)
+    await writeFile(path.join(shared, ".bin/probe.cmd"), "@echo fixture\r\n");
+  else
+    await symlink(
+      "../vs-install-probe/index.mjs",
+      path.join(shared, ".bin/probe"),
+    );
   await linkDirectory(shared, path.join(f.source, "node_modules"));
-  const installed = JSON.parse((await f.run(path.join(f.source, "scripts/install.mjs"), ["--target", f.target])).stdout);
+  const installed = JSON.parse(
+    (
+      await f.run(path.join(f.source, "scripts/install.mjs"), [
+        "--target",
+        f.target,
+      ])
+    ).stdout,
+  );
   assert.equal(installed.status, "ok");
   const copied = await lstat(path.join(f.target, "node_modules"));
   assert.ok(copied.isDirectory() && !copied.isSymbolicLink());
-  if (!windows) assert.equal(await readlink(path.join(f.target, "node_modules/.bin/probe")), "../vs-install-probe/index.mjs");
+  if (!windows)
+    assert.equal(
+      await readlink(path.join(f.target, "node_modules/.bin/probe")),
+      "../vs-install-probe/index.mjs",
+    );
   // Both paths are inside this test's own mkdtemp root; the original dependency
   // location no longer exists when the new process loads the installed module.
   await rename(f.source, path.join(f.root, "source-unavailable"));
   await rename(shared, path.join(f.root, "dependencies-unavailable"));
-  assert.equal((await f.run(path.join(f.target, "scripts/probe.mjs"))).stdout.trim(), "self-contained dependency");
+  assert.equal(
+    (await f.run(path.join(f.target, "scripts/probe.mjs"))).stdout.trim(),
+    "self-contained dependency",
+  );
 });
 
 test("install makes files read-only, relinks only directory links, and replaces only its own previous install", async (t) => {
@@ -165,10 +236,20 @@ test("install makes files read-only, relinks only directory links, and replaces 
   assert.equal(await readFile(path.join(realDir, "keep.txt"), "utf8"), "mine");
   // Re-install replaces its own previous install.
   assert.equal(
-    (await install({ target, link: `${claude},${claude}`, withDependencies: false })).status,
+    (
+      await install({
+        target,
+        link: `${claude},${claude}`,
+        withDependencies: false,
+      })
+    ).status,
     "ok",
   );
-  assert.equal(await readlink(claude), target, "existing directory link replaced");
+  assert.equal(
+    await readlink(claude),
+    target,
+    "existing directory link replaced",
+  );
   assert.deepEqual(
     await (await import("node:fs/promises")).readdir(path.dirname(claude)),
     ["video-summarizer"],
@@ -250,7 +331,10 @@ test("round 5: renderer identity refuses a symlink in the runtime tree (its refe
   const repo = fileURLToPath(new URL("..", import.meta.url));
   for (const part of ["lib", "templates", "schemas", "scripts", "package.json"])
     await cp(path.join(repo, part), path.join(root, part), { recursive: true });
-  await linkDirectory(path.join(repo, "node_modules"), path.join(root, "node_modules"));
+  await linkDirectory(
+    path.join(repo, "node_modules"),
+    path.join(root, "node_modules"),
+  );
   const outputUrl = pathToFileURL(path.join(root, "lib", "output.mjs"));
   const copy = await import(`${outputUrl.href}?clean`);
   assert.match((await copy.rendererIdentity()).sha256, /^[a-f0-9]{64}$/);
@@ -297,9 +381,16 @@ test("round 6: swap, permission and link failures roll back to the previous inst
     "utf8",
   );
   for (const faultAt of ["swap", "chmod", "link", "link-swap", "linked"]) {
-    const retainedBefore = (await readdir(parent)).filter((name) => name.includes(".failed-")).length;
+    const retainedBefore = (await readdir(parent)).filter((name) =>
+      name.includes(".failed-"),
+    ).length;
     await assert.rejects(
-      install({ target, link: `${hostLink},${newLink}`, withDependencies: false, faultAt }),
+      install({
+        target,
+        link: `${hostLink},${newLink}`,
+        withDependencies: false,
+        faultAt,
+      }),
       /injected/,
     );
     assert.equal(
@@ -320,17 +411,32 @@ test("round 6: swap, permission and link failures roll back to the previous inst
       elsewhere,
       `${faultAt}: host link restored`,
     );
-    await assert.rejects(access(newLink), `${faultAt}: newly created link removed`);
+    await assert.rejects(
+      access(newLink),
+      `${faultAt}: newly created link removed`,
+    );
     assert.deepEqual(
       await readdir(path.dirname(hostLink)),
       ["video-summarizer"],
       `${faultAt}: no temporary link left`,
     );
     const names = await readdir(parent);
-    assert.deepEqual(names.filter((name) => !name.includes(".failed-")).sort(), ["video-summarizer"], `${faultAt}: no staging/previous/lock left`);
+    assert.deepEqual(
+      names.filter((name) => !name.includes(".failed-")).sort(),
+      ["video-summarizer"],
+      `${faultAt}: no staging/previous/lock left`,
+    );
     const retained = names.filter((name) => name.includes(".failed-"));
-    assert.equal(retained.length, retainedBefore + (faultAt === "swap" ? 0 : 1), "failed new copies are retained, not recursively deleted");
-    for (const name of retained) assert.equal((await stat(path.join(parent, name, "SKILL.md"))).mode & 0o222, 0);
+    assert.equal(
+      retained.length,
+      retainedBefore + (faultAt === "swap" ? 0 : 1),
+      "failed new copies are retained, not recursively deleted",
+    );
+    for (const name of retained)
+      assert.equal(
+        (await stat(path.join(parent, name, "SKILL.md"))).mode & 0o222,
+        0,
+      );
   }
   // Initially absent target created by someone else during staging: refused, untouched.
   const fresh = path.join(root, "fresh", "video-summarizer");
@@ -366,7 +472,8 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
     const s = await stat(p).catch(() => null);
     if (!s) return;
     await chmod(p, s.mode | 0o200);
-    if (s.isDirectory()) for (const n of await readdir(p)) await unlock(path.join(p, n));
+    if (s.isDirectory())
+      for (const n of await readdir(p)) await unlock(path.join(p, n));
   };
   t.after(async () => {
     await unlock(root);
@@ -374,7 +481,10 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
   });
   const target = path.join(root, "agents", "video-summarizer");
   await mkdir(path.dirname(target));
-  assert.equal((await install({ target, withDependencies: false })).status, "ok");
+  assert.equal(
+    (await install({ target, withDependencies: false })).status,
+    "ok",
+  );
   const ours = path.join(root, "moved-install");
   await assert.rejects(
     install({
@@ -386,22 +496,39 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
         await chmod(target, 0o755);
         await rename(target, ours);
         await mkdir(target);
-        await writeFile(path.join(target, ".video-summarizer-install.json"), await readFile(path.join(ours, ".video-summarizer-install.json")));
+        await writeFile(
+          path.join(target, ".video-summarizer-install.json"),
+          await readFile(path.join(ours, ".video-summarizer-install.json")),
+        );
         await writeFile(path.join(target, "keep.txt"), "mine");
       },
     }),
     { code: "OUTPUT_EXISTS" },
   );
   assert.equal(await readFile(path.join(target, "keep.txt"), "utf8"), "mine");
-  assert.deepEqual((await readdir(path.dirname(target))).sort(), ["video-summarizer"], "no staging, previous or lock left");
+  assert.deepEqual(
+    (await readdir(path.dirname(target))).sort(),
+    ["video-summarizer"],
+    "no staging, previous or lock left",
+  );
   // R8-3: a failure between the ownership check and the swap still removes the staged copy.
   await rm(target, { recursive: true, force: true });
   await rename(ours, target);
   await assert.rejects(
-    install({ target, withDependencies: false, beforeSwap: async () => { throw new Error("injected"); } }),
+    install({
+      target,
+      withDependencies: false,
+      beforeSwap: async () => {
+        throw new Error("injected");
+      },
+    }),
     /injected/,
   );
-  assert.deepEqual((await readdir(path.dirname(target))).sort(), ["video-summarizer"], "staging removed");
+  assert.deepEqual(
+    (await readdir(path.dirname(target))).sort(),
+    ["video-summarizer"],
+    "staging removed",
+  );
 });
 
 test("previous installs are retained; a replacement during final retention is never chmod-ed or deleted", async (t) => {
@@ -410,19 +537,38 @@ test("previous installs are retained; a replacement during final retention is ne
   await install({ target: f.target, withDependencies: false });
   const saved = path.join(f.root, "saved-previous");
   let displaced, mode;
-  const result = await install({ target: f.target, withDependencies: false, beforeRetain: async (previous) => {
-    displaced = previous;
-    await chmod(previous, 0o755);
-    await rename(previous, saved);
-    await mkdir(previous, { mode: 0o700 });
-    await writeFile(path.join(previous, "keep.txt"), "unowned contents");
-    mode = (await lstat(previous)).mode;
-  } });
+  const result = await install({
+    target: f.target,
+    withDependencies: false,
+    beforeRetain: async (previous) => {
+      displaced = previous;
+      await chmod(previous, 0o755);
+      await rename(previous, saved);
+      await mkdir(previous, { mode: 0o700 });
+      await writeFile(path.join(previous, "keep.txt"), "unowned contents");
+      mode = (await lstat(previous)).mode;
+    },
+  });
   assert.equal(result.status, "ok");
-  assert.ok(result.issues.some((item) => item.code === "PREVIOUS_INSTALL_RETAINED" && item.message.includes(displaced)));
-  assert.ok(result.issues.some((item) => item.code === "PREVIOUS_INSTALL_CHANGED"));
-  assert.equal(await readFile(path.join(displaced, "keep.txt"), "utf8"), "unowned contents");
-  assert.equal((await lstat(displaced)).mode, mode, "replacement directory permissions unchanged");
+  assert.ok(
+    result.issues.some(
+      (item) =>
+        item.code === "PREVIOUS_INSTALL_RETAINED" &&
+        item.message.includes(displaced),
+    ),
+  );
+  assert.ok(
+    result.issues.some((item) => item.code === "PREVIOUS_INSTALL_CHANGED"),
+  );
+  assert.equal(
+    await readFile(path.join(displaced, "keep.txt"), "utf8"),
+    "unowned contents",
+  );
+  assert.equal(
+    (await lstat(displaced)).mode,
+    mode,
+    "replacement directory permissions unchanged",
+  );
   await access(path.join(saved, "SKILL.md"));
   await access(path.join(f.target, "SKILL.md"));
 });
@@ -431,22 +577,44 @@ test("rollback preserves a replacement target and reports the retained original 
   const { rename, lstat, readdir } = await import("node:fs/promises");
   const f = await isolatedInstaller(t);
   await install({ target: f.target, withDependencies: false });
-  const marker = await readFile(path.join(f.target, ".video-summarizer-install.json"), "utf8");
+  const marker = await readFile(
+    path.join(f.target, ".video-summarizer-install.json"),
+    "utf8",
+  );
   let mode;
-  await assert.rejects(install({ target: f.target, withDependencies: false, afterPublish: async () => {
-    await rename(f.target, path.join(f.root, "new-copy-moved"));
-    await mkdir(f.target, { mode: 0o700 });
-    await writeFile(path.join(f.target, "keep.txt"), "user files");
-    mode = (await lstat(f.target)).mode;
-    throw new Error("injected post-publication failure");
-  } }), (error) => {
-    assert.match(error.message, /previous installation is retained/);
-    return true;
-  });
-  assert.equal(await readFile(path.join(f.target, "keep.txt"), "utf8"), "user files");
+  await assert.rejects(
+    install({
+      target: f.target,
+      withDependencies: false,
+      afterPublish: async () => {
+        await rename(f.target, path.join(f.root, "new-copy-moved"));
+        await mkdir(f.target, { mode: 0o700 });
+        await writeFile(path.join(f.target, "keep.txt"), "user files");
+        mode = (await lstat(f.target)).mode;
+        throw new Error("injected post-publication failure");
+      },
+    }),
+    (error) => {
+      assert.match(error.message, /previous installation is retained/);
+      return true;
+    },
+  );
+  assert.equal(
+    await readFile(path.join(f.target, "keep.txt"), "utf8"),
+    "user files",
+  );
   assert.equal((await lstat(f.target)).mode, mode);
-  const previous = (await readdir(f.root)).find((name) => name.startsWith("installed.previous-"));
+  const previous = (await readdir(f.root)).find((name) =>
+    name.startsWith("installed.previous-"),
+  );
   assert.ok(previous);
-  assert.equal(await readFile(path.join(f.root, previous, ".video-summarizer-install.json"), "utf8"), marker);
-  if (!windows) assert.equal((await lstat(path.join(f.root, previous))).mode & 0o222, 0);
+  assert.equal(
+    await readFile(
+      path.join(f.root, previous, ".video-summarizer-install.json"),
+      "utf8",
+    ),
+    marker,
+  );
+  if (!windows)
+    assert.equal((await lstat(path.join(f.root, previous))).mode & 0o222, 0);
 });

@@ -216,7 +216,9 @@ for (const phase of ["close", "remove"]) {
     const f = await setup(t);
     const controller = new AbortController();
     const timeout = AbortSignal.timeout;
-    t.mock.method(AbortSignal, "timeout", (ms) => ms === 20 * 60_000 ? controller.signal : timeout(ms));
+    t.mock.method(AbortSignal, "timeout", (ms) =>
+      ms === 20 * 60_000 ? controller.signal : timeout(ms),
+    );
     const lock = path.join(f.options["work-dir"], ".write.lock");
     const original = phase === "close" ? fs.open : fs.rm;
     const method = phase === "close" ? "open" : "rm";
@@ -227,16 +229,28 @@ for (const phase of ["close", "remove"]) {
           const close = result.close.bind(result);
           result.close = async () => {
             await close();
-            controller.abort(new DOMException("Deadline reached", "TimeoutError"));
+            controller.abort(
+              new DOMException("Deadline reached", "TimeoutError"),
+            );
           };
-        } else controller.abort(new DOMException("Deadline reached", "TimeoutError"));
+        } else
+          controller.abort(
+            new DOMException("Deadline reached", "TimeoutError"),
+          );
       }
       return result;
     });
     syncBuiltinESMExports();
     try {
-      await assert.rejects(review(f.options, { asrPreferencePath: f.preference }), { code: "TIMEOUT" });
-      assert.equal(controller.signal.aborted, true, "transaction finalization was reached");
+      await assert.rejects(
+        review(f.options, { asrPreferencePath: f.preference }),
+        { code: "TIMEOUT" },
+      );
+      assert.equal(
+        controller.signal.aborted,
+        true,
+        "transaction finalization was reached",
+      );
       assert.deepEqual(await readdir(f.options["work-dir"]), ["windows"]);
     } finally {
       mocked.mock.restore();
@@ -249,12 +263,20 @@ test("deadline withdrawal preserves a replacement whose 64-bit inode collides as
   const f = await setup(t);
   const controller = new AbortController();
   const timeout = AbortSignal.timeout;
-  t.mock.method(AbortSignal, "timeout", (ms) => ms === 20 * 60_000 ? controller.signal : timeout(ms));
+  t.mock.method(AbortSignal, "timeout", (ms) =>
+    ms === 20 * 60_000 ? controller.signal : timeout(ms),
+  );
   const lock = path.join(f.options["work-dir"], ".write.lock");
   const output = path.join(f.options["work-dir"], "review.json");
-  const ownInode = 9007199254740992n, foreignInode = ownInode + 1n;
-  assert.equal(Number(ownInode), Number(foreignInode), "the regression requires lossy Number identities");
-  const originalStat = fs.lstat, originalRm = fs.rm;
+  const ownInode = 9007199254740992n,
+    foreignInode = ownInode + 1n;
+  assert.equal(
+    Number(ownInode),
+    Number(foreignInode),
+    "the regression requires lossy Number identities",
+  );
+  const originalStat = fs.lstat,
+    originalRm = fs.rm;
   let replaced = false;
   const mockedStat = t.mock.method(fs, "lstat", async (...args) => {
     const result = await originalStat(...args);
@@ -277,7 +299,10 @@ test("deadline withdrawal preserves a replacement whose 64-bit inode collides as
   });
   syncBuiltinESMExports();
   try {
-    await assert.rejects(review(f.options, { asrPreferencePath: f.preference }), { code: "TIMEOUT" });
+    await assert.rejects(
+      review(f.options, { asrPreferencePath: f.preference }),
+      { code: "TIMEOUT" },
+    );
     assert.equal(replaced, true);
     assert.equal(await readFile(output, "utf8"), "another writer's artifact");
     assert.ok(!(await readdir(f.options["work-dir"])).includes(".write.lock"));
@@ -292,11 +317,14 @@ test("CLI discloses failed deadline withdrawal without deleting a new writer's f
   const f = await setup(t);
   const controller = new AbortController();
   const timeout = AbortSignal.timeout;
-  t.mock.method(AbortSignal, "timeout", (ms) => ms === 20 * 60_000 ? controller.signal : timeout(ms));
+  t.mock.method(AbortSignal, "timeout", (ms) =>
+    ms === 20 * 60_000 ? controller.signal : timeout(ms),
+  );
   const lock = path.join(f.options["work-dir"], ".write.lock");
   const output = path.join(f.options["work-dir"], "review.json");
   const originalRm = fs.rm;
-  let foreignLock, text = "";
+  let foreignLock,
+    text = "";
   const mockedRm = t.mock.method(fs, "rm", async (...args) => {
     const result = await originalRm(...args);
     if (String(args[0]) === lock && !controller.signal.aborted) {
@@ -310,14 +338,25 @@ test("CLI discloses failed deadline withdrawal without deleting a new writer's f
   });
   syncBuiltinESMExports();
   const exitCode = process.exitCode;
-  const mockedStdout = t.mock.method(process.stdout, "write", (chunk) => { text += String(chunk); return true; });
+  const mockedStdout = t.mock.method(process.stdout, "write", (chunk) => {
+    text += String(chunk);
+    return true;
+  });
   try {
-    await runCli("asr-review", () => review(f.options, { asrPreferencePath: f.preference }));
+    await runCli("asr-review", () =>
+      review(f.options, { asrPreferencePath: f.preference }),
+    );
     const envelope = JSON.parse(text);
     assert.equal(envelope.status, "error");
     assert.equal(envelope.issues[0].code, "TIMEOUT");
-    assert.match(envelope.issues[0].message, /unverified review artifact may remain/);
-    assert.ok(!text.includes(f.dir), "private filesystem paths never enter the CLI response");
+    assert.match(
+      envelope.issues[0].message,
+      /unverified review artifact may remain/,
+    );
+    assert.ok(
+      !text.includes(f.dir),
+      "private filesystem paths never enter the CLI response",
+    );
     assert.equal(await readFile(output, "utf8"), "another writer's artifact");
     assert.ok((await readdir(f.options["work-dir"])).includes(".write.lock"));
   } finally {

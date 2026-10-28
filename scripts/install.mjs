@@ -67,13 +67,15 @@ export async function install(options) {
   );
   if (path.resolve(source) === target)
     throw new AppError("INVALID_CONTRACT", "Target is the source tree.", 4);
-  const links = [...new Set(
-    (options.link ?? "")
-      .split(",")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => path.resolve(home(l))),
-  )];
+  const links = [
+    ...new Set(
+      (options.link ?? "")
+        .split(",")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => path.resolve(home(l))),
+    ),
+  ];
   // One installer per target at a time (mkdir is atomic); a crashed run leaves the lock,
   // which the error names.
   const lock = `${target}.install-lock`;
@@ -122,7 +124,9 @@ async function dependencyDirectory(source) {
   try {
     const directory = await realpath(path.join(source, "node_modules"));
     if (!(await lstat(directory)).isDirectory()) throw new Error();
-    const pkg = JSON.parse(await readFile(path.join(source, "package.json"), "utf8"));
+    const pkg = JSON.parse(
+      await readFile(path.join(source, "package.json"), "utf8"),
+    );
     for (const name of Object.keys(pkg.dependencies ?? {}))
       if (!(await lstat(path.join(directory, name, "package.json"))).isFile())
         throw new Error();
@@ -142,8 +146,10 @@ async function installLocked(options, source, target, links) {
   // stage leaves the previous install untouched and usable.
   const stamp = randomUUID().slice(0, 8);
   const staging = `${target}.staging-${stamp}`;
-  const dependencies = options.withDependencies === false
-    ? null : await dependencyDirectory(source);
+  const dependencies =
+    options.withDependencies === false
+      ? null
+      : await dependencyDirectory(source);
   // Check dependencies before importing the renderer, so a fresh checkout gets a
   // useful install error rather than a top-level module-resolution exception.
   const { rendererIdentity } = await import("../lib/output.mjs");
@@ -158,8 +164,9 @@ async function installLocked(options, source, target, links) {
     for (const part of PARTS.filter(
       (p) => options.withDependencies !== false || p !== "node_modules",
     )) {
-      const from = part === "node_modules" ? dependencies : path.join(source, part);
-      if (part === "node_modules" || await exists(from))
+      const from =
+        part === "node_modules" ? dependencies : path.join(source, part);
+      if (part === "node_modules" || (await exists(from)))
         // Materialize a linked dependency root; preserve relative links inside it
         // (such as .bin) so the installed copy remains independent of its source.
         await cp(from, path.join(staging, part), {
@@ -180,7 +187,10 @@ async function installLocked(options, source, target, links) {
   // Ownership again, right before the swap: whatever sits at the target now must be the
   // install checked above. A target that appeared meanwhile is never replaced.
   const present = await exists(target);
-  if (present !== initiallyPresent || (present && !(await ownedInstall(target)))) {
+  if (
+    present !== initiallyPresent ||
+    (present && !(await ownedInstall(target)))
+  ) {
     await dropStaging();
     throw notOwned(target);
   }
@@ -190,7 +200,8 @@ async function installLocked(options, source, target, links) {
     const info = await lstat(dir, { bigint: true });
     return `${info.dev}:${info.ino}`;
   };
-  let claimed = null, staged;
+  let claimed = null,
+    staged;
   try {
     staged = await identityOf(staging);
     claimed = present ? await identityOf(target) : null;
@@ -210,7 +221,8 @@ async function installLocked(options, source, target, links) {
     const handle = await open(dir, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const info = await handle.stat({ bigint: true });
-      if (!info.isDirectory() || `${info.dev}:${info.ino}` !== expected) throw notOwned(dir);
+      if (!info.isDirectory() || `${info.dev}:${info.ino}` !== expected)
+        throw notOwned(dir);
       await handle.chmod(on ? 0o755 : 0o555);
     } finally {
       await handle.close();
@@ -232,14 +244,22 @@ async function installLocked(options, source, target, links) {
     // link aside first; retain it until the whole install commits so rollback preserves it.
     const temp = `${link}.tmp-${stamp}`;
     let backup = null;
-    await symlink(value, temp, process.platform === "win32" ? "junction" : "dir");
+    await symlink(
+      value,
+      temp,
+      process.platform === "win32" ? "junction" : "dir",
+    );
     try {
       if (process.platform === "win32" && present) {
         backup = `${link}.previous-${stamp}`;
         await rename(link, backup);
         // A real directory that appeared after the initial check must be restored intact.
         if (!(await lstat(backup)).isSymbolicLink())
-          throw new AppError("OUTPUT_EXISTS", `${link} changed to a real directory.`, 3);
+          throw new AppError(
+            "OUTPUT_EXISTS",
+            `${link} changed to a real directory.`,
+            3,
+          );
       }
       fault("link-swap");
       await rename(temp, link);
@@ -256,7 +276,10 @@ async function installLocked(options, source, target, links) {
       await topWritable(target, true, claimed);
       fault("swap");
       await rename(target, previous);
-      if ((await identityOf(previous)) !== claimed || !(await ownedInstall(previous))) {
+      if (
+        (await identityOf(previous)) !== claimed ||
+        !(await ownedInstall(previous))
+      ) {
         foreign = true;
         // Put it back untouched; if that is impossible, say where it is rather than
         // changing whatever now occupies the target.
@@ -328,7 +351,10 @@ async function installLocked(options, source, target, links) {
         await topWritable(failed, false, staged);
         recovery(error, `The failed new copy was retained at ${failed}.`);
       } catch {
-        recovery(error, `Rollback could not safely move the current target; inspect ${target} and ${failed}.`);
+        recovery(
+          error,
+          `Rollback could not safely move the current target; inspect ${target} and ${failed}.`,
+        );
       }
     }
     if (previous && !foreign && (await exists(previous))) {
@@ -338,10 +364,14 @@ async function installLocked(options, source, target, links) {
         await rename(previous, target);
       } catch {
         await topWritable(previous, false, claimed).catch(() => {});
-        recovery(error, `The previous installation is retained at ${previous}; restore it manually after checking the target.`);
+        recovery(
+          error,
+          `The previous installation is retained at ${previous}; restore it manually after checking the target.`,
+        );
       }
     }
-    if (present && !foreign) await topWritable(target, false, claimed).catch(() => {});
+    if (present && !foreign)
+      await topWritable(target, false, claimed).catch(() => {});
     await dropStaging();
     throw error;
   }
@@ -349,7 +379,11 @@ async function installLocked(options, source, target, links) {
     if (backup)
       await rm(backup, { force: true }).catch(() => {
         issues.push(
-          issue("PREVIOUS_LINK_LEFT", `The previous link could not be removed: ${backup}`, "warning"),
+          issue(
+            "PREVIOUS_LINK_LEFT",
+            `The previous link could not be removed: ${backup}`,
+            "warning",
+          ),
         );
       });
   if (previous) {
@@ -357,11 +391,23 @@ async function installLocked(options, source, target, links) {
     try {
       await topWritable(previous, false, claimed);
     } catch {
-      issues.push(issue("PREVIOUS_INSTALL_CHANGED", `The displaced directory changed; it was not modified: ${previous}`, "warning"));
+      issues.push(
+        issue(
+          "PREVIOUS_INSTALL_CHANGED",
+          `The displaced directory changed; it was not modified: ${previous}`,
+          "warning",
+        ),
+      );
     }
     // Node has no portable descriptor-relative recursive removal. Keeping the previous
     // tree avoids deleting a replacement between a final identity check and rm().
-    issues.push(issue("PREVIOUS_INSTALL_RETAINED", `Previous installation retained for recovery at ${previous}. After verifying the new install, remove it manually if no longer needed.`, "info"));
+    issues.push(
+      issue(
+        "PREVIOUS_INSTALL_RETAINED",
+        `Previous installation retained for recovery at ${previous}. After verifying the new install, remove it manually if no longer needed.`,
+        "info",
+      ),
+    );
   }
   issues.unshift(
     issue(

@@ -210,7 +210,9 @@ a.ts,
   border: 0;
   color: var(--muted);
   background: var(--surface-2);
-  font: 0.75rem / 1 system-ui, sans-serif;
+  font:
+    0.75rem / 1 system-ui,
+    sans-serif;
 }
 .citation-overflow {
   display: inline-flex;
