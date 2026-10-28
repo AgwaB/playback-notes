@@ -86,7 +86,7 @@ Only the source and mode are mandatory beyond `schemaVersion` at the script boun
 
 Write the formats the user chose: any non-empty combination of `"html"`, `"markdown"` and `"pdf"`. The host asks when the request does not name them; an omitted `formats` falls back to HTML and Markdown. Select an existing Chrome/Chromium executable only when `"pdf"` is requested. Missing explicitly requested PDF remains an incomplete job; HTML and Markdown need no PDF runtime. A later change to requested formats requires a new output revision.
 
-For a local input use `source.kind: "local"` and an absolute file path. A user-supplied `transcriptFile` must be a readable SRT, VTT or TXT file. Untimed TXT remains untimed. `focus` guides the host's authoring, not extraction or an internal model. The example YouTube URL is syntax only, not a promise of accessible captions.
+For a local input use `source.kind: "local"` and an absolute file path. A user-supplied `transcriptFile` must be a readable SRT, VTT or TXT file in UTF-8 or BOM-marked UTF-16; legacy code pages such as EUC-KR/CP949 are refused (`transcript-encoding-unsupported`) rather than guessed. Untimed TXT remains untimed. `focus` guides the host's authoring, not extraction or an internal model. The example YouTube URL is syntax only, not a promise of accessible captions.
 
 ## Tool sequence
 

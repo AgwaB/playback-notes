@@ -34,6 +34,7 @@ so this is not a security boundary against file additions or replacements by the
 - Place the required `eng.traineddata`/`kor.traineddata` in `tessdata` beside the Tesseract executable. On Windows, this directory is specified explicitly to avoid automatic-discovery errors with Korean installation paths. Select both languages with `--ocr-languages kor+eng`.
 - Apple Vision OCR and the BotGuard sandbox are macOS-only. The Windows caption path uses the Android-app caption list.
 
+Save supplied SRT/VTT/TXT transcripts as UTF-8; Notepad's "Unicode" (UTF-16) also works, but EUC-KR/CP949 subtitle files are refused and must be re-saved as UTF-8.
 Quote CLI paths that contain spaces or Korean characters. In JSON, write paths as `C:/Videos/sample.mp4` or
 `C:\\Videos\\sample.mp4`. Keep work and public output directories separate.
 
