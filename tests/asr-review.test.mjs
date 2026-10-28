@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { fakeTool } from "./fake-tool.mjs";
 import { review } from "../scripts/asr-review.mjs";
 
@@ -82,4 +82,22 @@ test("review refuses to replace an existing review artifact", async (t) => {
   await writeFile(existing, "keep this existing file");
   await assert.rejects(review(f.options, { asrPreferencePath: f.preference }), { code: "OUTPUT_EXISTS" });
   assert.equal(await readFile(existing, "utf8"), "keep this existing file");
+});
+
+test("review does not publish success when the deadline expires during final fsync", async (t) => {
+  const f = await setup(t);
+  const controller = new AbortController();
+  const timeout = AbortSignal.timeout;
+  t.mock.method(AbortSignal, "timeout", (ms) => ms === 20 * 60_000 ? controller.signal : timeout(ms));
+  const handle = await open(f.source, "r");
+  const prototype = Object.getPrototypeOf(handle);
+  const sync = prototype.sync;
+  await handle.close();
+  t.mock.method(prototype, "sync", async function (...args) {
+    await sync.apply(this, args);
+    controller.abort(new DOMException("Deadline reached", "TimeoutError"));
+  });
+  await assert.rejects(review(f.options, { asrPreferencePath: f.preference }), { code: "TIMEOUT" });
+  assert.equal(controller.signal.aborted, true, "the final write was reached");
+  assert.deepEqual(await readdir(f.options["work-dir"]), ["windows"], "no review, lock or temporary file remains");
 });

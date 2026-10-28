@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { fork } from "node:child_process";
+import { once } from "node:events";
 import { fakeTool } from "./fake-tool.mjs";
 import { runLocalTool } from "../lib/local-tool.mjs";
 
@@ -64,5 +66,55 @@ process.exit(0);
   const survived = alive(childPid);
   if (survived) process.kill(childPid, "SIGKILL");
   assert.equal(survived, false, "the orphaned child was stopped with the tool's process group");
+});
+
+test("completed tool groups are retired over IPC before returning", {
+  skip: process.platform === "win32" && "POSIX group tracking",
+  timeout: 15000,
+}, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "tool-ipc-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const worker = path.join(dir, "worker.mjs");
+  await writeFile(worker, `
+import { runLocalTool } from ${JSON.stringify(new URL("../lib/local-tool.mjs", import.meta.url).href)};
+for (let i = 0; i < 2; i++) {
+  await runLocalTool(process.execPath, ['-e', ''], { workDir: ${JSON.stringify(dir)}, timeoutMs: 5000 });
+  process.send({ type: 'returned' });
+}
+process.disconnect();
+`);
+  const child = fork(worker, [], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+  const messages = [];
+  child.on("message", (message) => messages.push(message));
+  const [code] = await once(child, "close");
+  assert.equal(code, 0);
+  assert.deepEqual(messages.map((message) => message.type), [
+    "tool-group", "tool-group-closed", "returned",
+    "tool-group", "tool-group-closed", "returned",
+  ]);
+  assert.equal(messages[0].pid, messages[1].pid);
+  assert.equal(messages[3].pid, messages[4].pid);
+});
+
+test("a successful launcher cannot leave a child with closed output running", {
+  skip: process.platform === "win32" && "POSIX group tracking",
+}, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "tool-exited-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const launcher = await fakeTool(path.join(dir, "launcher"), `
+import fs from 'node:fs';
+import { spawn } from 'node:child_process';
+const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });
+fs.writeFileSync('child.pid', String(child.pid));
+child.unref();
+process.exit(0);
+`);
+  await runLocalTool(launcher, [], { workDir: dir, timeoutMs: 5000 });
+  const pid = Number(await readFile(path.join(dir, "child.pid"), "utf8"));
+  for (let i = 0; i < 20 && alive(pid); i++) await new Promise((resolve) => setTimeout(resolve, 100));
+  const survived = alive(pid);
+  if (survived) process.kill(pid, "SIGKILL");
+  assert.equal(survived, false);
 });
 
