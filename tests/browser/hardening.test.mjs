@@ -224,6 +224,39 @@ test(
   },
 );
 
+test("source-panel Close stays reachable after late-citation scrolling in a short viewport", browserTest, async (t) => {
+  const { page, running } = await nativeFixture(t);
+  await page.setViewportSize({ width: 390, height: 500 });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route("**/media/**", async (route) => { await gate; await route.continue(); });
+  t.after(() => release());
+  await page.goto(running.url);
+  const trigger = page.locator('a.ts[data-ms="4000"]').first();
+  const reachable = () => page.locator("#close-source").evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const panel = document.getElementById("source-panel").getBoundingClientRect();
+    return {
+      focused: document.activeElement === button,
+      visible: rect.top >= Math.max(0, panel.top) && rect.bottom <= Math.min(innerHeight, panel.bottom),
+      hit: button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)),
+    };
+  });
+  await trigger.click();
+  assert.deepEqual(await reachable(), { focused: true, visible: true, hit: true });
+  release();
+  await decoded(page, 4, 2);
+  assert.deepEqual(await reachable(), { focused: true, visible: true, hit: true });
+  await page.locator("#close-source").click();
+  assert.equal(await page.locator("#source-panel").isVisible(), false);
+  assert.equal(await trigger.evaluate((element) => element === document.activeElement), true);
+  await page.keyboard.press("Enter");
+  await page.setViewportSize({ width: 390, height: 420 });
+  assert.deepEqual(await reachable(), { focused: true, visible: true, hit: true });
+  await page.keyboard.press("Escape");
+  assert.equal(await trigger.evaluate((element) => element === document.activeElement), true);
+});
+
 test(
   "keyboard activation, focus restoration, pin layout and manual-scroll/follow interactions",
   browserTest,

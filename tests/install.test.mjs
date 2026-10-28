@@ -297,6 +297,7 @@ test("round 6: swap, permission and link failures roll back to the previous inst
     "utf8",
   );
   for (const faultAt of ["swap", "chmod", "link", "link-swap", "linked"]) {
+    const retainedBefore = (await readdir(parent)).filter((name) => name.includes(".failed-")).length;
     await assert.rejects(
       install({ target, link: `${hostLink},${newLink}`, withDependencies: false, faultAt }),
       /injected/,
@@ -325,11 +326,11 @@ test("round 6: swap, permission and link failures roll back to the previous inst
       ["video-summarizer"],
       `${faultAt}: no temporary link left`,
     );
-    assert.deepEqual(
-      (await readdir(parent)).sort(),
-      ["video-summarizer"],
-      `${faultAt}: no staging/previous/lock left`,
-    );
+    const names = await readdir(parent);
+    assert.deepEqual(names.filter((name) => !name.includes(".failed-")).sort(), ["video-summarizer"], `${faultAt}: no staging/previous/lock left`);
+    const retained = names.filter((name) => name.includes(".failed-"));
+    assert.equal(retained.length, retainedBefore + (faultAt === "swap" ? 0 : 1), "failed new copies are retained, not recursively deleted");
+    for (const name of retained) assert.equal((await stat(path.join(parent, name, "SKILL.md"))).mode & 0o222, 0);
   }
   // Initially absent target created by someone else during staging: refused, untouched.
   const fresh = path.join(root, "fresh", "video-summarizer");
@@ -401,4 +402,51 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
     /injected/,
   );
   assert.deepEqual((await readdir(path.dirname(target))).sort(), ["video-summarizer"], "staging removed");
+});
+
+test("previous installs are retained; a replacement during final retention is never chmod-ed or deleted", async (t) => {
+  const { rename, chmod, lstat } = await import("node:fs/promises");
+  const f = await isolatedInstaller(t);
+  await install({ target: f.target, withDependencies: false });
+  const saved = path.join(f.root, "saved-previous");
+  let displaced, mode;
+  const result = await install({ target: f.target, withDependencies: false, beforeRetain: async (previous) => {
+    displaced = previous;
+    await chmod(previous, 0o755);
+    await rename(previous, saved);
+    await mkdir(previous, { mode: 0o700 });
+    await writeFile(path.join(previous, "keep.txt"), "unowned contents");
+    mode = (await lstat(previous)).mode;
+  } });
+  assert.equal(result.status, "ok");
+  assert.ok(result.issues.some((item) => item.code === "PREVIOUS_INSTALL_RETAINED" && item.message.includes(displaced)));
+  assert.ok(result.issues.some((item) => item.code === "PREVIOUS_INSTALL_CHANGED"));
+  assert.equal(await readFile(path.join(displaced, "keep.txt"), "utf8"), "unowned contents");
+  assert.equal((await lstat(displaced)).mode, mode, "replacement directory permissions unchanged");
+  await access(path.join(saved, "SKILL.md"));
+  await access(path.join(f.target, "SKILL.md"));
+});
+
+test("rollback preserves a replacement target and reports the retained original instead of deleting either", async (t) => {
+  const { rename, lstat, readdir } = await import("node:fs/promises");
+  const f = await isolatedInstaller(t);
+  await install({ target: f.target, withDependencies: false });
+  const marker = await readFile(path.join(f.target, ".video-summarizer-install.json"), "utf8");
+  let mode;
+  await assert.rejects(install({ target: f.target, withDependencies: false, afterPublish: async () => {
+    await rename(f.target, path.join(f.root, "new-copy-moved"));
+    await mkdir(f.target, { mode: 0o700 });
+    await writeFile(path.join(f.target, "keep.txt"), "user files");
+    mode = (await lstat(f.target)).mode;
+    throw new Error("injected post-publication failure");
+  } }), (error) => {
+    assert.match(error.message, /previous installation is retained/);
+    return true;
+  });
+  assert.equal(await readFile(path.join(f.target, "keep.txt"), "utf8"), "user files");
+  assert.equal((await lstat(f.target)).mode, mode);
+  const previous = (await readdir(f.root)).find((name) => name.startsWith("installed.previous-"));
+  assert.ok(previous);
+  assert.equal(await readFile(path.join(f.root, previous, ".video-summarizer-install.json"), "utf8"), marker);
+  if (!windows) assert.equal((await lstat(path.join(f.root, previous))).mode & 0o222, 0);
 });

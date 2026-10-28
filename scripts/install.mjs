@@ -1,10 +1,12 @@
 import path from "node:path";
 import os from "node:os";
+import { constants } from "node:fs";
 import {
   chmod,
   cp,
   lstat,
   mkdir,
+  open,
   readdir,
   readFile,
   readlink,
@@ -95,6 +97,8 @@ export async function install(options) {
 /** Only a previous install (a regular, well-formed marker file) may be replaced. */
 async function ownedInstall(dir) {
   try {
+    const root = await lstat(dir);
+    if (!root.isDirectory() || root.isSymbolicLink()) return false;
     const info = await lstat(path.join(dir, MARKER));
     const marker = info.isFile()
       ? JSON.parse(await readFile(path.join(dir, MARKER), "utf8"))
@@ -186,19 +190,36 @@ async function installLocked(options, source, target, links) {
     const info = await lstat(dir, { bigint: true });
     return `${info.dev}:${info.ino}`;
   };
-  let claimed = null;
+  let claimed = null, staged;
   try {
+    staged = await identityOf(staging);
     claimed = present ? await identityOf(target) : null;
     await options.beforeSwap?.(); // offline-test seam
   } catch (error) {
     await dropStaging();
     throw error;
   }
-  // Everything from here to the last link is one transaction: on any failure the links are
-  // restored, the new copy removed and the previous install moved back, read-only.
-  // macOS refuses to rename a directory that is itself read-only, so only the two top
-  // directories are made writable for the swap and read-only again afterwards.
-  const topWritable = (dir, on) => chmod(dir, on ? 0o755 : 0o555);
+  // POSIX chmod is descriptor-bound: a pathname replacement cannot change permissions
+  // on another directory. Windows directory read-only attributes are not a write ACL and
+  // do not need toggling for rename; leave them alone instead of chmod-ing by pathname.
+  const topWritable = async (dir, on, expected) => {
+    if (process.platform === "win32") {
+      if ((await identityOf(dir)) !== expected) throw notOwned(dir);
+      return;
+    }
+    const handle = await open(dir, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const info = await handle.stat({ bigint: true });
+      if (!info.isDirectory() || `${info.dev}:${info.ino}` !== expected) throw notOwned(dir);
+      await handle.chmod(on ? 0o755 : 0o555);
+    } finally {
+      await handle.close();
+    }
+  };
+  const recovery = (error, message) => {
+    error.message += ` ${message}`;
+    error.cleanupNote = `${error.cleanupNote ?? ""} ${message}`;
+  };
   const previous = present ? `${target}.previous-${stamp}` : null;
   let swapped = false,
     foreign = false;
@@ -232,8 +253,7 @@ async function installLocked(options, source, target, links) {
   const issues = [];
   try {
     if (previous) {
-      const modeBefore = (await lstat(target)).mode & 0o7777;
-      await topWritable(target, true);
+      await topWritable(target, true, claimed);
       fault("swap");
       await rename(target, previous);
       if ((await identityOf(previous)) !== claimed || !(await ownedInstall(previous))) {
@@ -249,15 +269,15 @@ async function installLocked(options, source, target, links) {
             3,
           );
         }
-        await chmod(target, modeBefore).catch(() => {});
         throw notOwned(target);
       }
     }
-    await topWritable(staging, true);
+    await topWritable(staging, true, staged);
     await rename(staging, target);
     swapped = true;
+    await options.afterPublish?.(); // offline-test seam, never a CLI option
     fault("chmod");
-    await topWritable(target, false);
+    await topWritable(target, false, staged);
     for (const link of links) {
       let current = null;
       try {
@@ -299,12 +319,29 @@ async function installLocked(options, source, target, links) {
         else await rm(link, { force: true });
       })().catch(() => {});
     if (swapped) {
-      await setWritable(target, true).catch(() => {});
-      await rm(target, { recursive: true, force: true }).catch(() => {});
+      // Never recursively delete a live install pathname during rollback. Retain the failed
+      // copy for recovery; an unexpected occupant is not moved or chmod-ed.
+      const failed = `${target}.failed-${stamp}`;
+      try {
+        await topWritable(target, true, staged);
+        await rename(target, failed);
+        await topWritable(failed, false, staged);
+        recovery(error, `The failed new copy was retained at ${failed}.`);
+      } catch {
+        recovery(error, `Rollback could not safely move the current target; inspect ${target} and ${failed}.`);
+      }
     }
-    if (previous && !foreign && (await exists(previous)) && !(await exists(target)))
-      await rename(previous, target).catch(() => {});
-    if (present && !foreign) await topWritable(target, false).catch(() => {});
+    if (previous && !foreign && (await exists(previous))) {
+      try {
+        if (await exists(target)) throw notOwned(target);
+        await topWritable(previous, true, claimed);
+        await rename(previous, target);
+      } catch {
+        await topWritable(previous, false, claimed).catch(() => {});
+        recovery(error, `The previous installation is retained at ${previous}; restore it manually after checking the target.`);
+      }
+    }
+    if (present && !foreign) await topWritable(target, false, claimed).catch(() => {});
     await dropStaging();
     throw error;
   }
@@ -315,26 +352,17 @@ async function installLocked(options, source, target, links) {
           issue("PREVIOUS_LINK_LEFT", `The previous link could not be removed: ${backup}`, "warning"),
         );
       });
-  if (previous)
+  if (previous) {
+    await options.beforeRetain?.(previous); // offline-test seam, never a CLI option
     try {
-      // Delete only the very install that was claimed and moved aside: re-checked after
-      // making it writable, immediately before removal (best effort without
-      // descriptor-relative deletion in Node; a mismatch leaves it and reports it).
-      const ours = async () =>
-        (await identityOf(previous)) === claimed && (await ownedInstall(previous));
-      if (!(await ours())) throw new Error("not the claimed install");
-      await setWritable(previous, true);
-      if (!(await ours())) throw new Error("not the claimed install");
-      await rm(previous, { recursive: true, force: true });
+      await topWritable(previous, false, claimed);
     } catch {
-      issues.push(
-        issue(
-          "PREVIOUS_INSTALL_LEFT",
-          `The new install is in place; the previous copy could not be removed: ${previous}`,
-          "warning",
-        ),
-      );
+      issues.push(issue("PREVIOUS_INSTALL_CHANGED", `The displaced directory changed; it was not modified: ${previous}`, "warning"));
     }
+    // Node has no portable descriptor-relative recursive removal. Keeping the previous
+    // tree avoids deleting a replacement between a final identity check and rm().
+    issues.push(issue("PREVIOUS_INSTALL_RETAINED", `Previous installation retained for recovery at ${previous}. After verifying the new install, remove it manually if no longer needed.`, "info"));
+  }
   issues.unshift(
     issue(
       "INSTALLED",

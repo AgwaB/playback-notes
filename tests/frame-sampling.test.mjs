@@ -8,7 +8,7 @@ import path from "node:path";
 import { extractSource, isolatedEnvironment } from "../lib/ingest.mjs";
 
 const exec = promisify(execFile);
-let root, digits, cuts;
+let root, digits, cuts, builds;
 const box = (x, y, w, h, enabled = "") =>
   `drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=black:t=fill${enabled}`;
 const zero = (x, enabled = "") => [
@@ -29,6 +29,7 @@ before(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), "frame-sampling-test-"));
   digits = path.join(root, "decimal.mp4");
   cuts = path.join(root, "early-cuts.mp4");
+  builds = path.join(root, "gradual-builds.mp4");
   // A seven-segment 0.5 gains one zero for two seconds, changing only 0.2% of pixels.
   const brief = ":enable='gte(t,16)*lt(t,18)'";
   await encode(digits, 120, [
@@ -38,6 +39,8 @@ before(async () => {
   ].join(","));
   await encode(cuts, 48,
     "geq=lum='if(lt(T,12),if(mod(floor(N/2),2),16,235),235)':cb=128:cr=128");
+  await encode(builds, 20, Array.from({ length: 4 }, (_, i) =>
+    box(40, 30 + i * 25, 80, 2, `:enable='gte(t,${(i + 1) * 4})'`)).join(","));
 });
 after(async () => {
   if (root) {
@@ -96,6 +99,23 @@ test("default short-video sampling retains a brief low-area decimal change", asy
   assert.ok(result.frames.at(-1).timestampMs >= 118000, "late frames remain represented");
   assert.equal(result.raw.visualOcr.coverage.cutsDropped, false);
   assert.equal(warning(result, "FRAMES_TRUNCATED"), false);
+});
+
+test("gradual low-area builds retain every sampled state and are never discarded by similarity hints", async (t) => {
+  const result = await sample(builds, "builds", { ocrSampleSeconds: 2 });
+  const states = [];
+  for (const frame of result.frames) {
+    const { stdout } = await exec("ffmpeg", ["-v", "error", "-nostdin", "-i", path.join(result.assetRoot, frame.assetPath),
+      "-vf", "format=gray", "-frames:v", "1", "-f", "rawvideo", "pipe:1"],
+      { encoding: "buffer", env: isolatedEnvironment(root), timeout: 10000, windowsHide: true });
+    const dark = [...stdout].filter((value) => value < 80).length;
+    states.push(Math.round(dark / 160));
+  }
+  assert.equal(result.frames.length, 10, "all two-second samples retained");
+  assert.deepEqual(states, [0, 0, 1, 1, 2, 2, 3, 3, 4, 4], "JPEG content preserves every incremental build");
+  const runs = result.raw.visualOcr.contactSheet.lookAlikeRuns;
+  assert.ok(runs.some((run) => run.kind === "builds"), "cumulative drift cannot remain near-identical");
+  t.diagnostic(JSON.stringify({ states, runs }));
 });
 
 test("a small default frame budget drops excess early cuts and still reaches late footage", async (t) => {

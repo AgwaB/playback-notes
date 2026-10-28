@@ -7,6 +7,7 @@ import { readFile, writeFile, rm, mkdir, realpath, symlink } from "node:fs/promi
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fixture } from "../helpers.mjs";
+import { browserDiagnostics } from "./diagnostics.mjs";
 import { render } from "../../scripts/render.mjs";
 import { exportReport } from "../../scripts/export.mjs";
 import { startServer } from "../../lib/server.mjs";
@@ -172,12 +173,17 @@ test("real native seek, untimed transcript, Korean PDF, Markdown, images, retry 
     headless: true,
     chromiumSandbox: true,
   });
-  t.after(() => browser.close());
+  const diagnostics = browserDiagnostics(t, browser);
+  t.after(async () => {
+    try { await diagnostics.finish(); }
+    finally { await browser.close(); }
+  });
   const running = await startServer({ root: f.out, jobManifest });
   t.after(() => running.close());
   const page = await browser.newPage({
     viewport: { width: 1500, height: 1000 },
   });
+  await diagnostics.track(page);
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const external = [];
@@ -240,10 +246,16 @@ test("real native seek, untimed transcript, Korean PDF, Markdown, images, retry 
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
   const offline = await browser.newPage();
+  await diagnostics.track(offline);
   await offline.goto(pathToFileURL(path.join(f.out, "index.html")).href);
   assert.equal(await offline.locator("h1").textContent(), f.data.report.title);
   await offline.getByRole("button", { name: "원본 열기", exact: true }).click();
+  assert.equal(await offline.locator("#source-panel").isVisible(), true);
+  assert.equal(await offline.locator("#close-source").evaluate((element) => element === document.activeElement), true);
   assert.equal(await offline.locator("#transcript p").count(), 4);
+  await offline.keyboard.press("Escape");
+  assert.equal(await offline.locator("#source-panel").isVisible(), false);
+  assert.equal(await offline.locator("#open-source").evaluate((element) => element === document.activeElement), true);
 });
 
 test("YouTube failure preserves transcript and external timestamp fallback", {

@@ -97,6 +97,16 @@ jobs:
           node --input-type=module -e "import { accessSync, constants, lstatSync } from 'node:fs'; import { execFileSync } from 'node:child_process'; const browser = process.env.TEST_BROWSER_EXECUTABLE; if (!lstatSync(browser).isFile()) throw new Error('Browser must be a regular file; resolve symlinks first.'); accessSync(browser, constants.X_OK); for (const tool of ['pdftotext', 'pdfinfo']) execFileSync(tool, ['-v'], { stdio: 'inherit' });"
       - name: Browser and PDF regression tests
         if: matrix.node == '26'
+        env:
+          TEST_BROWSER_ARTIFACTS: ${{ runner.temp }}/video-browser-debug
         # Browser instances are memory/CPU intensive; keep all tests while
-        # avoiding oversubscription on hosted runners.
+        # avoiding oversubscription on hosted runners. No retries hide failures.
         run: node --test --test-concurrency=2 tests/browser/*.test.mjs
+      - name: Retain synthetic browser failure diagnostics
+        if: failure() && matrix.node == '26'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-debug-${{ matrix.os }}-${{ matrix.node }}
+          path: ${{ runner.temp }}/video-browser-debug
+          if-no-files-found: ignore
+          retention-days: 7

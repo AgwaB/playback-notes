@@ -11,11 +11,14 @@ const exec = promisify(execFile);
 const executablePath = process.env.TEST_BROWSER_EXECUTABLE;
 
 test("inside a host sandbox, a PDF export that cannot start the browser's own sandbox says so (Codex workspace-write)", {
-  skip: (process.platform !== "darwin" || !executablePath) && "macOS with a test browser only",
+  skip:
+    (process.platform !== "darwin" || !executablePath) &&
+    "macOS with a test browser only",
   timeout: 120000,
 }, async (t) => {
   const { confinedRuntimeStatus } = await import("../../lib/ingest-worker.mjs");
-  if (!(await confinedRuntimeStatus()).available) return t.skip("already inside a sandbox");
+  if (!(await confinedRuntimeStatus()).available)
+    return t.skip("already inside a sandbox");
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const tmp = realpathSync(os.tmpdir());
@@ -29,6 +32,13 @@ test("inside a host sandbox, a PDF export that cannot start the browser's own sa
   // Deny-default outer profile like a host agent's sandboxed shell: temp writes allowed,
   // but a second (the browser's own) sandbox profile cannot be applied.
   const outer = `(version 1)(deny default)(allow file-read*)(allow file-write* (subpath "/dev") (subpath ${JSON.stringify(tmp)}) (subpath ${JSON.stringify(realpathSync(f.root))}))(allow process-exec)(allow process-fork)(allow sysctl-read)(allow mach-lookup)(allow signal (target self))(allow ipc-posix-shm)(allow iokit-open)`;
-  const { stdout } = await exec("/usr/bin/sandbox-exec", ["-p", outer, process.execPath, "--input-type=module", "-e", script], { timeout: 100000 });
-  assert.match(stdout, /^EXPORT_FAILED: .*cannot start inside this host sandbox/);
+  const { stdout } = await exec(
+    "/usr/bin/sandbox-exec",
+    ["-p", outer, process.execPath, "--input-type=module", "-e", script],
+    { timeout: 100000 },
+  );
+  assert.match(
+    stdout,
+    /^EXPORT_FAILED: .*sandbox probe was refused\..*may be preventing Chrome's own sandbox/,
+  );
 });
