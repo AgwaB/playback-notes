@@ -1,7 +1,17 @@
 # Running on Windows
 
 Use Windows-native Node.js 24.15 or later in the 24.x line, or 26+, on Windows 10/11 x64. Node 25 is not supported. Windows 10 has been checked for compatibility but has not been tested on a running system. WSL is a separate Linux environment. See the [support matrix](support-matrix.md) for current verification coverage.
-In PowerShell, change to the repository directory and run:
+To install with the `skills` CLI, run these in PowerShell. Windows PowerShell 5.1 rejects the `&&` in the README's bash command, so the dependencies are installed with `--prefix`:
+
+```powershell
+node --version
+npx skills add AgwaB/video-summarizer -g
+npm ci --prefix "$HOME\.agents\skills\video-summarizer"
+```
+
+Run the `npm ci` line again after `npx skills update video-summarizer -g`, which removes the dependencies. The `skills` CLI links Claude Code with a directory junction.
+
+For the manual read-only install, change to the repository directory and run:
 
 ```powershell
 node --version

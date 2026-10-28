@@ -40,8 +40,16 @@ test("Windows preflight and actual extraction resolve relative PATH from fresh c
   const marker = path.join(f.root, "media-tool-calls.jsonl");
   await Promise.all([mkdir(callerTools), mkdir(workTools)]);
   for (const name of ["ffmpeg", "ffprobe"]) {
-    const found = await execute(path.join(process.env.SystemRoot, "System32", "where.exe"), [name]);
-    const executable = found.stdout.split(/\r?\n/).find((file) => file.toLowerCase().endsWith(".exe"));
+    // where.exe prints in the console code page, which garbles non-ASCII install paths
+    // (e.g. WinGet under a Korean user profile); search PATH directly instead.
+    let executable;
+    for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+      const candidate = path.join(directory.replace(/^"(.*)"$/, "$1"), `${name}.exe`);
+      if (path.isAbsolute(candidate) && await access(candidate).then(() => true, () => false)) {
+        executable = candidate;
+        break;
+      }
+    }
     assert.ok(executable, `real ${name} must be available for the extraction regression`);
     for (const [directory, origin] of [[callerTools, "caller"], [workTools, "work"]])
       await fakeTool(path.join(directory, name), `

@@ -43,7 +43,7 @@ npx skills add AgwaB/video-summarizer -g
 (cd ~/.agents/skills/video-summarizer && npm ci)
 ```
 
-**Both lines are required.** The first installs the skill with the [`skills` CLI](https://github.com/vercel-labs/skills) for the agents you pick, such as Claude Code, Codex and pi. The second installs its dependencies.
+**Both lines are required.** The first installs the skill with the [`skills` CLI](https://github.com/vercel-labs/skills) for the agents you pick, such as Claude Code, Codex and pi. The second installs its dependencies. In Windows PowerShell, use the [PowerShell commands](references/windows.md) instead.
 
 To update or remove it:
 
