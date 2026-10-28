@@ -22,4 +22,7 @@ test("phrase grouping stays linear on a long connected token (round 7 F4) and ke
     phraseHtml("모델은 GPT-4o 기준 97% 정확도"),
     /<span class="source-phrase">97%<\/span>/,
   );
+  // Round 8 R8-6: a long bracketed run still excludes its connected tail, exactly as before.
+  const bracketed = "(" + "a".repeat(51) + ")foo 12";
+  assert.equal(phraseHtml(bracketed), `(${"a".repeat(51)})foo <span class="source-phrase">12</span>`);
 });

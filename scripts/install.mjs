@@ -186,8 +186,14 @@ async function installLocked(options, source, target, links) {
     const info = await lstat(dir, { bigint: true });
     return `${info.dev}:${info.ino}`;
   };
-  const claimed = present ? await identityOf(target) : null;
-  await options.beforeSwap?.(); // offline-test seam
+  let claimed = null;
+  try {
+    claimed = present ? await identityOf(target) : null;
+    await options.beforeSwap?.(); // offline-test seam
+  } catch (error) {
+    await dropStaging();
+    throw error;
+  }
   // Everything from here to the last link is one transaction: on any failure the links are
   // restored, the new copy removed and the previous install moved back, read-only.
   // macOS refuses to rename a directory that is itself read-only, so only the two top
@@ -232,7 +238,17 @@ async function installLocked(options, source, target, links) {
       await rename(target, previous);
       if ((await identityOf(previous)) !== claimed || !(await ownedInstall(previous))) {
         foreign = true;
-        await rename(previous, target).catch(() => {});
+        // Put it back untouched; if that is impossible, say where it is rather than
+        // changing whatever now occupies the target.
+        try {
+          await rename(previous, target);
+        } catch {
+          throw new AppError(
+            "OUTPUT_EXISTS",
+            `${target} was replaced during installation; the directory found there was moved to ${previous} and could not be put back. Restore it by hand.`,
+            3,
+          );
+        }
         await chmod(target, modeBefore).catch(() => {});
         throw notOwned(target);
       }
@@ -301,10 +317,14 @@ async function installLocked(options, source, target, links) {
       });
   if (previous)
     try {
-      // Delete only the very install that was claimed and moved aside.
-      if ((await identityOf(previous)) !== claimed || !(await ownedInstall(previous)))
-        throw new Error("not the claimed install");
+      // Delete only the very install that was claimed and moved aside: re-checked after
+      // making it writable, immediately before removal (best effort without
+      // descriptor-relative deletion in Node; a mismatch leaves it and reports it).
+      const ours = async () =>
+        (await identityOf(previous)) === claimed && (await ownedInstall(previous));
+      if (!(await ours())) throw new Error("not the claimed install");
       await setWritable(previous, true);
+      if (!(await ours())) throw new Error("not the claimed install");
       await rm(previous, { recursive: true, force: true });
     } catch {
       issues.push(

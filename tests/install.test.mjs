@@ -393,4 +393,12 @@ test("round 7 F5: a directory swapped in between the ownership check and the ren
   );
   assert.equal(await readFile(path.join(target, "keep.txt"), "utf8"), "mine");
   assert.deepEqual((await readdir(path.dirname(target))).sort(), ["video-summarizer"], "no staging, previous or lock left");
+  // R8-3: a failure between the ownership check and the swap still removes the staged copy.
+  await rm(target, { recursive: true, force: true });
+  await rename(ours, target);
+  await assert.rejects(
+    install({ target, withDependencies: false, beforeSwap: async () => { throw new Error("injected"); } }),
+    /injected/,
+  );
+  assert.deepEqual((await readdir(path.dirname(target))).sort(), ["video-summarizer"], "staging removed");
 });

@@ -382,7 +382,7 @@ test("a whisper build that answers neither --version nor --help keeps its finish
   await writeFile(model, "offline test placeholder, not a speech model");
   const executable = await fakeTool(
     path.join(root, "mock-whisper-noversion"),
-    `import fs from 'node:fs';\nif (process.argv.includes('--version') || process.argv.includes('--help')) process.exit(9);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,100 --> 00:00:00,700\\nKept transcript.\\n');\n`,
+    `import fs from 'node:fs';\nfs.appendFileSync(${JSON.stringify(path.join(root, "noversion-trace.log"))}, (process.argv.includes('--output-srt') ? 'transcribe' : process.argv[2]) + '\\n');\nif (process.argv.includes('--version') || process.argv.includes('--help')) process.exit(9);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,100 --> 00:00:00,700\\nKept transcript.\\n');\n`,
   );
   const result = await extractSource(
     request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
@@ -390,6 +390,37 @@ test("a whisper build that answers neither --version nor --help keeps its finish
   );
   assert.equal(result.segments[0].text, "Kept transcript.");
   assert.equal(result.extraction.providerVersion, "unknown");
+  // R8-5: provenance probes run before the expensive transcription, never after it.
+  assert.deepEqual((await readFile(path.join(root, "noversion-trace.log"), "utf8")).trim().split("\n"), ["--version", "--help", "transcribe"]);
+});
+
+test("cancelling extraction also stops a running local tool and what it started (round 8 R8-1)", {
+  skip: process.platform === "win32" && "Windows stops the worker tree with taskkill /T",
+}, async () => {
+  const model = path.join(root, "mock-model.bin");
+  await writeFile(model, "offline test placeholder, not a speech model");
+  const pidFile = path.join(root, "slow-whisper.pid");
+  const executable = await fakeTool(
+    path.join(root, "mock-whisper-slow"),
+    `import fs from 'node:fs';\nimport { spawn } from 'node:child_process';\nif (process.argv.includes('--version')) { console.log('whisper.cpp version: 1.9.5'); process.exit(0); }\nconst child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore' });\nfs.writeFileSync(${JSON.stringify(pidFile)}, process.pid + ' ' + child.pid);\nsetTimeout(() => {}, 60000);\n`,
+  );
+  const controller = new AbortController();
+  const running = extractSource(
+    request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
+    { workDir: path.join(jobs, "cancel-tool"), localAsrExecutable: executable, localAsrModel: model, signal: controller.signal },
+  );
+  for (let i = 0; i < 100; i++) {
+    if (await readFile(pidFile, "utf8").catch(() => null)) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  controller.abort();
+  await assert.rejects(running, { code: "CANCELLED" });
+  const pids = (await readFile(pidFile, "utf8")).split(" ").map(Number);
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  for (let i = 0; i < 20 && pids.some(alive); i++) await new Promise((r) => setTimeout(r, 100));
+  const survivors = pids.filter(alive);
+  for (const pid of survivors) process.kill(pid, "SIGKILL");
+  assert.deepEqual(survivors, [], "the tool and its child were stopped with the extraction");
 });
 
 test("the invented-phrase pattern flags credits and outros, not ordinary speech about captions", async () => {
