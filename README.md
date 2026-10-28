@@ -75,7 +75,7 @@ On Windows, follow the [PowerShell setup](references/windows.md); on WSL, the [W
 Choose how deep the report goes:
 
 | Mode | What you get | Ask with words like | For the 1-hour example |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Briefing** | The main conclusions and why they hold | “summarize”, “briefing”, “key points” | 4 key points · 6 sections · ≈ 6 min read |
 | **Deep-dive** | Topic-by-topic explanations with reasoning, examples, caveats and open questions | “in detail”, “deep-dive”, “analyze” | 5 key points · 18 sections · ≈ 14 min read |
 
