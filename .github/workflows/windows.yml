@@ -18,8 +18,12 @@ jobs:
         os: [ubuntu-24.04, windows-2025, macos-15]
         node: ["24.15.0", "26"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v7 runs on Node 24 (v4 targeted the deprecated Node 20 runtime). The job never
+      # pushes, so the token is not left in the checkout's git config.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm

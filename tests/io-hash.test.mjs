@@ -11,5 +11,7 @@ test("fileHash honours a deadline signal (round 7 F3: review hashing could outli
   const file = path.join(dir, "a.bin");
   await writeFile(file, Buffer.alloc(1024 * 1024));
   assert.match(await fileHash(file), /^[a-f0-9]{64}$/);
-  await assert.rejects(fileHash(file, AbortSignal.abort()), { name: "AbortError" });
+  await assert.rejects(fileHash(file, AbortSignal.abort()), {
+    name: "AbortError",
+  });
 });

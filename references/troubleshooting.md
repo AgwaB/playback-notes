@@ -31,6 +31,7 @@
 | `UNCONFIRMED_FRAME` | Inspect the actual image or remove unsupported visual claims. Do not mark inspection just to pass. |
 | `PDF_RUNTIME_MISSING` | Select an installed Chrome/Chromium executable or ask permission to install one. Retain successful HTML/MD and report the overall job incomplete. |
 | Codex PDF fails before page creation | A tested workspace-write run aborted Chrome at launch (SIGABRT, cleanup EPERM). Diagnose the host's browser-launch permissions; do not assume a font/report defect or disable either sandbox. Keep PDF incomplete until an authorized runtime succeeds. |
+| `EXPORT_FAILED` … cannot start inside this host sandbox | Chrome's own sandbox cannot start inside a macOS host sandbox (Codex `workspace-write` aborts it at launch). Run `export.mjs` outside the host sandbox (an approved unsandboxed command); HTML and Markdown are already complete. Never disable the browser sandbox. |
 | `EXPORT_FAILED` / PDF font issue | Check selected browser, sandbox support and local fonts. Retry PDF against the same report with `--font-dir`; visually inspect it. Do not disable the browser sandbox as a silent fallback. |
 | `BUSY` | A writer owns `.write.lock`. Wait or determine the owning process has stopped. Never remove a live lock. After a crash, prefer a fresh job/revision rather than blindly deleting the lock. |
 | `OUTPUT_EXISTS` | Choose an empty output revision; do not overwrite unrelated user files. |
