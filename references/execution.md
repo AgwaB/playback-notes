@@ -4,9 +4,14 @@ These are **host tool calls**, not commands the user must learn. Substitute abso
 
 ## Installation and capabilities
 
-After installation has been authorized, run `npm ci` in the source checkout before `scripts/install.mjs`. The installer copies those dependencies into the installed skill; do not run `npm ci` in its read-only directory. Supported Node.js versions are **24.15 or later in the 24.x line, or 26+** (`^24.15.0 || >=26.0.0`); Node 25 is excluded. `npm ci` does not install Chromium, an ASR model or a speech engine. No API key is needed.
+After installation has been authorized, install dependencies according to the installation method:
 
-Updates retain the displaced read-only installation as `.previous-*` and report its recovery path (`PREVIOUS_INSTALL_RETAINED`); rollback can retain a failed new copy as `.failed-*`. These copies consume additional disk space. After verifying the new install and stopping dependent processes, inspect ownership/contents before manually removing an unneeded copy. The installer does not recursively delete these backups: pathname identity checks cannot provide a same-UID adversarial filesystem boundary.
+- `skills` CLI (`npx skills add AgwaB/video-summarizer -g`): run `npm ci` in the installed skill directory (`~/.agents/skills/video-summarizer`). Reinstalling or updating through that CLI replaces the directory without its dependencies, so run `npm ci` again afterwards.
+- Manual installer: run `npm ci` in the source checkout before `scripts/install.mjs`. The installer copies those dependencies into its read-only copy; do not run `npm ci` in that directory.
+
+A script that fails with `ERR_MODULE_NOT_FOUND` means the dependencies are missing. Supported Node.js versions are **24.15 or later in the 24.x line, or 26+** (`^24.15.0 || >=26.0.0`); Node 25 is excluded. `npm ci` does not install Chromium, an ASR model or a speech engine. No API key is needed.
+
+Manual-installer updates retain the displaced read-only installation as `.previous-*` and report its recovery path (`PREVIOUS_INSTALL_RETAINED`); rollback can retain a failed new copy as `.failed-*`. These copies consume additional disk space. After verifying the new install and stopping dependent processes, inspect ownership/contents before manually removing an unneeded copy. The installer does not recursively delete these backups: pathname identity checks cannot provide a same-UID adversarial filesystem boundary.
 
 Optional tools are not installed automatically:
 

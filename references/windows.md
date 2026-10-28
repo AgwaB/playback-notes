@@ -6,10 +6,10 @@ In PowerShell, change to the repository directory and run:
 ```powershell
 node --version
 npm ci
-node scripts/install.mjs --link "$HOME\.claude\skills\video-summarizer,$HOME\.codex\skills\video-summarizer"
+node scripts/install.mjs --link "$HOME\.claude\skills\video-summarizer"
 ```
 
-The default installation target is `$HOME\.agents\skills\video-summarizer`; both `~/` and `~\` are supported.
+The default installation target is `$HOME\.agents\skills\video-summarizer`; both `~/` and `~\` are supported. Codex and pi read that directory directly, so `--link` is needed only for Claude Code.
 Host links use directory junctions, which require neither administrator privileges nor Developer Mode.
 Windows cannot rename a junction over an existing one. When relinking, the installer temporarily moves the existing junction to `<link>.previous-<id>` before creating the new junction (unlike atomic replacement on POSIX). If interrupted between those steps, rename the retained junction back to its original name.
 Existing ordinary directories are not replaced. Installed files are read-only, but directory ACLs are not changed,
