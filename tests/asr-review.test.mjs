@@ -21,7 +21,7 @@ import { runCli } from "../lib/cli.mjs";
 
 const exec = promisify(execFile);
 
-async function setup(t, { badTimes = false } = {}) {
+async function setup(t, { badTimes = false, cueAtEnd = false } = {}) {
   // macOS temporary paths may begin with /var, a symlink to /private/var.
   const dir = await realpath(
     await mkdtemp(path.join(os.tmpdir(), "asr-review-")),
@@ -46,7 +46,15 @@ async function setup(t, { badTimes = false } = {}) {
     `
 import fs from 'node:fs';
 const args = process.argv.slice(2);
-fs.writeFileSync(args[args.indexOf('--output-file') + 1] + '.srt', ${JSON.stringify(`1\n00:00:00,100 --> ${badTimes ? "00:00:29,980" : "00:00:00,500"}\nKorean English candidate.\n`)});
+${
+  cueAtEnd
+    ? // Like Whisper, end the last cue on the clip's nominal length (rounded up to 100 ms).
+      `const wav = fs.readFileSync(args.at(-1));
+const ms = Math.ceil((wav.length - wav.indexOf('data') - 8) / 32 / 100) * 100;
+const end = new Date(ms).toISOString().slice(11, 23).replace('.', ',');
+fs.writeFileSync(args[args.indexOf('--output-file') + 1] + '.srt', '1\\n00:00:00,100 --> ' + end + '\\nKorean English candidate.\\n');`
+    : `fs.writeFileSync(args[args.indexOf('--output-file') + 1] + '.srt', ${JSON.stringify(`1\n00:00:00,100 --> ${badTimes ? "00:00:29,980" : "00:00:00,500"}\nKorean English candidate.\n`)});`
+}
 `,
   );
   const gpu = await fakeTool(
@@ -138,6 +146,28 @@ test("out-of-range model timestamps are withheld and marked partial", async (t) 
     data.windows.every(
       (w) => w.status === "unavailable" && w.segments.length === 0,
     ),
+  );
+});
+
+test("WMA review clips keep their full length, so a cue ending at the window end stays timed", async (t) => {
+  const f = await setup(t, { cueAtEnd: true });
+  const wma = path.join(f.dir, "source.wma");
+  await exec("ffmpeg", ["-v", "error", "-i", f.source, "-c:a", "wmav2", wma]);
+  const response = await review(
+    { ...f.options, source: wma },
+    { asrPreferencePath: f.preference },
+  );
+  assert.equal(response.status, "ok");
+  const data = JSON.parse(
+    await readFile(path.join(f.options["work-dir"], "review.json"), "utf8"),
+  );
+  assert.deepEqual(
+    data.windows.map((w) => [w.status, w.segments[0]?.endMs]),
+    [
+      ["candidate", 7000],
+      ["candidate", 9000],
+      ["candidate", 11000],
+    ],
   );
 });
 

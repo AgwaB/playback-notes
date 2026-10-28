@@ -325,6 +325,35 @@ test("real prepare integration creates normalized evidence, unreviewed ledger an
     { code: "EVIDENCE_MISMATCH" },
   );
 });
+test("WMA audio (ASF container), listed in the support matrix, is accepted", async (t) => {
+  const f = await acquisition(t);
+  const wma = path.join(f.root, "source.wma");
+  await execute(
+    "ffmpeg",
+    [
+      "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      f.request.source.value,
+      // ASF stores a millisecond duration rounded down; keep the last cue inside it.
+      "-af",
+      "apad=pad_dur=1",
+      "-c:a",
+      "wmav2",
+      wma,
+    ],
+    { timeout: 30000 },
+  );
+  f.request.source = { kind: "local", value: wma };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  const prepared = await prepare(f.args);
+  assert.equal(prepared.status, "ok");
+  const evidence = (await readJson(path.join(f.work, "evidence.json"))).data;
+  assert.equal(evidence.source.mediaType, "audio");
+  assert.equal(evidence.segments.length, 3);
+});
 test("cache includes transcript format and explicit ASR executable bytes", async (t) => {
   const f = await acquisition(t);
   const first = await cacheKey(f.request);
