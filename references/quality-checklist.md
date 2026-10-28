@@ -9,7 +9,7 @@
 - [ ] Quotations, times, speakers and visual observations were not invented.
 - [ ] Inference/reconstruction is visibly distinguished from source claims.
 - [ ] Partial evidence/analysis was disclosed and approved for the exact current scope.
-- [ ] The output language matches the request; both modes have appropriate, source-driven depth.
+- [ ] The output language matches the explicit preference, otherwise the user's conversation language (English only when unknown), and is recorded in `request.json.outputLanguage`; UI labels remain English; both modes have appropriate, source-driven depth.
 
 ## Documents
 

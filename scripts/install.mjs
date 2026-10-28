@@ -31,7 +31,6 @@ const PARTS = [
   "schemas",
   "templates",
   "references",
-  "docs",
   "node_modules",
 ];
 const MARKER = ".video-summarizer-install.json";

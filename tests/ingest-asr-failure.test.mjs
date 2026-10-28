@@ -14,8 +14,8 @@ const limit = 8 * 1024 * 1024;
 const local = { policy: { asr: "local" }, transcriptFile: null };
 
 test("failed ASR diagnostic gate accepts only bounded validation-error text for local ASR", () => {
-  const allowed = { ok: false, code: "INVALID_CONTRACT", detail: "transcript-invalid-timing", rawSrt: "한영\n" };
-  assert.equal(asrFailureOutput(allowed, local, 7), "한영\n");
+  const allowed = { ok: false, code: "INVALID_CONTRACT", detail: "transcript-invalid-timing", rawSrt: "ok🙂\n" };
+  assert.equal(asrFailureOutput(allowed, local, 7), "ok🙂\n");
   for (const message of [
     { ...allowed, ok: true }, { ...allowed, ok: undefined },
     { ...allowed, code: "TIMEOUT" }, { ...allowed, code: "RESOURCE_LIMIT" },
@@ -47,7 +47,7 @@ else fs.writeFileSync(args[args.indexOf('--output-file') + 1] + '.srt', ${JSON.s
 `);
   const request = path.join(root, "request.json");
   const data = { schemaVersion: 1, source: { kind: "local", value: media }, mode: "briefing",
-    outputLanguage: "ko", policy: { asr: "local", visual: "off", extractTimeoutMs: 15000,
+    outputLanguage: "en", policy: { asr: "local", visual: "off", extractTimeoutMs: 15000,
       asrTimeoutMs: 15000, maxDownloadBytes: 4 * 1024 * 1024 } };
   await writeFile(request, JSON.stringify(data));
   const run = () => exec(process.execPath, ["scripts/prepare.mjs", "--request", request,
@@ -97,7 +97,7 @@ async function retained(f) {
 
 test("native subtitle validation failures preserve exact private SRT with safe precise causes", async (t) => {
   const cases = [
-    ["1\r\n00:00:00,100 --> 00:00:00,100\r\nprivate-secret 한영\r\n", /invalid or non-positive time interval/],
+    ["1\r\n00:00:00,100 --> 00:00:00,100\r\nprivate-secret ok🙂\r\n", /invalid or non-positive time interval/],
     ["1\n00:00:00,100 --> 00:00:00,700\n   \n", /empty text/],
     ["1\ninvalid --> 00:00:00,700\nprivate-secret\n", /could not be parsed/],
     ["1\n00:00:00,100 --> 00:00:00,700\nprivate-secret\nfoo --> bar\n", /Some subtitle cues/],
@@ -148,7 +148,7 @@ test("supplied subtitle errors remain strict and do not create native ASR diagno
 });
 
 test("ASR duration overruns preserve every cue as untimed without clipping or dropping text", async (t) => {
-  const raw = "1\n00:00:00,100 --> 00:00:00,700\nFirst 한영\n\n" +
+  const raw = "1\n00:00:00,100 --> 00:00:00,700\nFirst ok🙂\n\n" +
     "2\n00:00:01,800 --> 00:00:02,500\nEnd overrun\n\n" +
     "3\n00:00:02,500 --> 00:00:03,000\nBoth overrun\n\n" +
     "4\n00:00:01,200 --> 00:00:01,500\nLater cue order\n\n" +
@@ -160,7 +160,7 @@ test("ASR duration overruns preserve every cue as untimed without clipping or dr
   const extraction = JSON.parse(await readFile(path.join(f.work, "raw/extraction.json"), "utf8"));
   assert.equal(evidence.source.durationMs, 2000);
   assert.deepEqual(evidence.segments.map(({ startMs, endMs, text }) => [startMs, endMs, text]), [
-    [100, 700, "First 한영"], [null, null, "End overrun"], [null, null, "Both overrun"],
+    [100, 700, "First ok🙂"], [null, null, "End overrun"], [null, null, "Both overrun"],
     [1200, 1500, "Later cue order"], [1900, 2000, "Exact end"],
   ]);
   assert.equal(extraction.localAsr, raw);

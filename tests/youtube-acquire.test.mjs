@@ -130,7 +130,7 @@ test("opt-in token: one caption request carrying pot/c=WEB with browser headers;
 test("original language from real player shapes: an auto-dubbed default is not the original; without audio ids a single asr track names the spoken language", async () => {
   const { rankCaptionTracks, originalCaptionLanguage } = await import("../lib/caption-tracks.mjs");
   const t = (languageCode, kind) => ({ baseUrl: `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${languageCode}`, languageCode, ...(kind ? { kind } : {}) });
-  // 세바시 (dOIPnTRhF5c, 2026-10-26): Korean speech; YouTube's auto-dubs flagged default.
+  // Sebasi (dOIPnTRhF5c, 2026-10-26): Korean speech; YouTube's auto-dubs flagged default.
   const sebasi = {
     streamingData: { adaptiveFormats: [
       { audioTrack: { displayName: "English (US)", id: "en-US.10", audioIsDefault: true, isAutoDubbed: true } },
@@ -190,7 +190,7 @@ test("a token-gated web track without a usable token is read from the Android ap
         calls.push(["text", url]);
         if (url.startsWith("https://www.youtube.com/watch")) return page(gated());
         if (url.includes("android=1"))
-          return json3([{ tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: "안녕" }] }]);
+          return json3([{ tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: "Hello" }] }]);
         return "";
       },
       buffered: async (url, init) => {
@@ -408,21 +408,21 @@ test("the original language (default audio track) beats a translation listed fir
     null,
   );
   // Review round 5: a dubbed default must not be taken for the original. The player marks
-  // the original in the (localized) display name, as yt-dlp reads it.
+  // the original in the display name, as yt-dlp reads it.
   const dubbed = {
     streamingData: {
       adaptiveFormats: [
         {
           audioTrack: {
             id: "ko.9",
-            displayName: "한국어",
+            displayName: "Korean",
             audioIsDefault: true,
           },
         },
         {
           audioTrack: {
             id: "en-US.4",
-            displayName: "영어 (US) 원본",
+            displayName: "English (US) original",
             audioIsDefault: false,
           },
         },

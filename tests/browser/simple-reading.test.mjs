@@ -11,11 +11,11 @@ const browserTest = { skip: !executablePath, timeout: 60000 };
 
 async function readingFixture(t) {
   const f = await fixture({ mutate(d) {
-    d.report.title = "긴 영상의 핵심을 빠르게 이해하기";
-    d.evidence.source.title = "영상 인터뷰 · 합성 UI 검증 자료";
+    d.report.title = "Quickly understand the essentials of a long video";
+    d.evidence.source.title = "Video interview · synthetic UI test material";
     d.report.summary[0].citations = d.evidence.segments.map((s) => ({ kind: "segment", id: s.id }));
     for (let i = 1; i <= 5; i++) d.report.sections.push({
-      id: `topic-${i}`, heading: `${i + 1}. 핵심 내용을 원본과 함께 확인하기`,
+      id: `topic-${i}`, heading: `${i + 1}. Check key points against the source`,
       blocks: [{ type: "paragraph", statement: d.report.sections[0].blocks[0].statement }],
     });
     d.evidence.extraction.warnings = [
@@ -57,7 +57,7 @@ test("mobile reader starts with closed contents and compact, touch-sized citatio
   const exactLink = citations.locator('a.ts[data-ms="2000"]');
   await exactLink.focus();
   await page.keyboard.press("Enter");
-  await page.waitForFunction(() => document.querySelector("#player-status").textContent.includes("재생할 수 없습니다"));
+  await page.waitForFunction(() => document.querySelector("#player-status").textContent.includes("Playback unavailable"));
   assert.ok((await page.locator("#source-fallback").getAttribute("href")).includes("t=2s"));
   await page.keyboard.press("Escape");
   assert.equal(await exactLink.evaluate((a) => document.activeElement === a), true);

@@ -9,7 +9,7 @@ const { diagramSvg, diagramText, layerFlow } = diagramModule;
 
 const cite = [{ kind: "segment", id: "seg-000001" }];
 const caption = {
-  text: "강연자의 인과 설명을 도식화한 것이다.",
+  text: "A diagram interpreting the speaker's causal explanation.",
   attribution: "interpretation",
   citations: cite,
 };
@@ -24,18 +24,18 @@ const flow = () => ({
   type: "diagram",
   kind: "flow",
   id: "cause",
-  title: "원인 사슬",
-  alt: "산업주의에서 창의역량 상실까지의 인과 사슬",
+  title: "Causal chain",
+  alt: "A causal chain from industrialism to lost creativity",
   nodes: [
-    node("a", "산업주의 수요", { focal: true }),
-    node("b", "유용한 과목 우위"),
-    node("c", "대학의 자기복제"),
-    node("d", "지성 = 학문능력"),
-    node("e", "재능 낙인 <script>"),
+    node("a", "Industrial demand", { focal: true }),
+    node("b", "Useful subjects first"),
+    node("c", "University self-copy"),
+    node("d", "Intelligence = academics"),
+    node("e", "Talent stigma <script>"),
   ],
   edges: [
     { from: "a", to: "b", label: null },
-    { from: "a", to: "c", label: "설계" },
+    { from: "a", to: "c", label: "Design" },
     { from: "b", to: "d", label: null },
     { from: "c", to: "d", label: null },
     { from: "d", to: "e", label: null },
@@ -46,12 +46,12 @@ const stack = () => ({
   type: "diagram",
   kind: "stack",
   id: "rank",
-  title: "과목 위계",
-  alt: "수학·언어가 위, 예술이 아래",
+  title: "Subject hierarchy",
+  alt: "Math and languages above the arts",
   nodes: [
-    node("top", "수학 · 언어"),
-    node("mid", "인문학"),
-    node("low", "예술", { sublabel: "미술·음악 > 연극·춤", focal: true }),
+    node("top", "Math · languages"),
+    node("mid", "Humanities"),
+    node("low", "Arts", { sublabel: "Art/music > drama/dance", focal: true }),
   ],
   edges: [],
   caption,
@@ -72,8 +72,8 @@ test("flow and stack diagrams render deterministic, escaped, orthogonal SVG with
   assert.ok(html.includes('<figure class="diagram" id="diagram-cause">'));
   assert.ok(html.includes('aria-labelledby="dg-cause-title dg-cause-desc"'));
   assert.ok(
-    html.includes("재능 낙인 &lt;script&gt;") &&
-      !html.includes("낙인 <script>"),
+    html.includes("Talent stigma &lt;script&gt;") &&
+      !html.includes("stigma <script>"),
   );
   const svg = diagramSvg(flow());
   const paths = [...svg.matchAll(/<path d="([^"]+)" fill="none"/g)].map(
@@ -103,7 +103,7 @@ test("flow and stack diagrams render deterministic, escaped, orthogonal SVG with
   );
   const stackSvg = diagramSvg(stack());
   assert.ok(
-    stackSvg.includes("미술·음악 &gt; 연극·춤") &&
+    stackSvg.includes("Art/music &gt; drama/dance") &&
       !stackSvg.includes("<path d="),
   );
 });
@@ -111,20 +111,20 @@ test("flow and stack diagrams render deterministic, escaped, orthogonal SVG with
 test("Markdown exports the diagram as structured text, not an image or raw SVG", async (t) => {
   const f = await withBlock(flow(), t);
   const md = markdownDocument(f.bundle);
-  assert.ok(md.includes("**원인 사슬**"));
-  assert.match(md, /- 산업주의 수요(?:\r?\n|$)/);
-  assert.ok(md.includes("산업주의 수요 → 대학의 자기복제 (설계)"));
+  assert.ok(md.includes("**Causal chain**"));
+  assert.match(md, /- Industrial demand(?:\r?\n|$)/);
+  assert.ok(md.includes("Industrial demand → University self-copy (Design)"));
   assert.ok(!md.includes("<svg"));
   assert.deepEqual(diagramText(stack()), [
-    "수학 · 언어",
-    "인문학",
-    "예술 — 미술·음악 > 연극·춤",
+    "Math · languages",
+    "Humanities",
+    "Arts — Art/music > drama/dance",
   ]);
   const stackFixture = await withBlock(stack(), t);
   const stackMarkdown = markdownDocument(stackFixture.bundle);
-  assert.match(stackMarkdown, /1\. 수학 · 언어/);
-  assert.match(stackMarkdown, /2\. 인문학/);
-  assert.match(stackMarkdown, /3\. 예술 — 미술·음악 > 연극·춤/);
+  assert.match(stackMarkdown, /1\. Math · languages/);
+  assert.match(stackMarkdown, /2\. Humanities/);
+  assert.match(stackMarkdown, /3\. Arts — Art\/music > drama\/dance/);
   assert.doesNotMatch(stackMarkdown, /\d\. \d\\?\./);
 });
 
@@ -154,7 +154,7 @@ test("diagram contract rejects unknown refs, cycles, isolated nodes, >2 focal, s
     [
       "isolated node",
       (b) => {
-        b.nodes.push(node("f", "고립"));
+        b.nodes.push(node("f", "Isolated"));
       },
       "INVALID_CONTRACT",
     ],
@@ -250,13 +250,18 @@ test("diagram contract rejects unknown refs, cycles, isolated nodes, >2 focal, s
 
 test("long labels wrap/ellipsize inside boxes, row-skipping edges use the side lane, parallel runs are offset", () => {
   const { fitText, textWidth } = diagramModule;
+  // English glyphs are narrower, so keep enough text to overflow two lines.
   assert.deepEqual(
-    fitText("A 아주아주아주 긴 라벨 텍스트 40자까지 허용되는 경우", 15, 200, 2)
-      .length,
+    fitText(
+      "A very very long label with enough explanatory text to exceed two narrow lines",
+      15,
+      200,
+      2,
+    ).length,
     2,
   );
   const [, second] = fitText(
-    "A 아주아주아주 긴 라벨 텍스트 40자까지 허용되는 경우",
+    "A very very long label with enough explanatory text to exceed two narrow lines",
     15,
     200,
     2,
@@ -272,14 +277,21 @@ test("long labels wrap/ellipsize inside boxes, row-skipping edges use the side l
   );
   const svg = diagramSvg(block);
   const canvasWidth = Number(/viewBox="0 0 (\d+) \d+"/.exec(svg)[1]);
-  const [, labelX, labelWidth] = /<rect x="([\d.]+)" y="[^"]+" width="([\d.]+)" height="18" fill="[^"]+"\/><text[^>]*>SKIP<\/text>/.exec(svg);
+  const [, labelX, labelWidth] =
+    /<rect x="([\d.]+)" y="[^"]+" width="([\d.]+)" height="18" fill="[^"]+"\/><text[^>]*>SKIP<\/text>/.exec(
+      svg,
+    );
   assert.ok(
     Number(labelX) + Number(labelWidth) < canvasWidth,
     "side-lane label background fits inside its canvas",
   );
   const unlabeled = structuredClone(block);
   unlabeled.edges.at(-1).label = null;
-  assert.match(diagramSvg(unlabeled), /viewBox="0 0 668 \d+"/, "unlabeled lane keeps its existing width");
+  assert.match(
+    diagramSvg(unlabeled),
+    /viewBox="0 0 668 \d+"/,
+    "unlabeled lane keeps its existing width",
+  );
   const paths = [...svg.matchAll(/<path d="([^"]+)" fill="none"/g)].map(
     (m) => m[1],
   );
@@ -288,7 +300,7 @@ test("long labels wrap/ellipsize inside boxes, row-skipping edges use the side l
   assert.ok(lane, "skip edge routes through the right lane");
   for (const d of paths) assert.doesNotMatch(d, /L/);
   assert.ok(
-    svg.includes("<title>A 아주") === false,
+    svg.includes("<title>A very") === false,
     "no tooltip when label fits",
   );
   const a2b = paths[0],
@@ -303,7 +315,7 @@ test("long labels wrap/ellipsize inside boxes, row-skipping edges use the side l
 
 test("a node label or sublabel the renderer would cut with an ellipsis fails validation (real host case: 6-node row)", async () => {
   const { diagramTruncations } = await import("../lib/diagram.mjs");
-  // Shape from a Claude Code run on Karpathy's "Intro to LLMs": one kernel node fanning out
+  // Translated shape from a Claude Code run on Karpathy's "Intro to LLMs": one kernel node fanning out
   // to six nodes in one row; three sublabels were silently cut in the PDF.
   const block = {
     type: "diagram",
@@ -312,31 +324,31 @@ test("a node label or sublabel the renderer would cut with an ellipsis fails val
     title: "LLM OS",
     alt: "LLM OS",
     nodes: [
-      { id: "llm", label: "LLM (커널 / CPU)", sublabel: null, focal: true },
+      { id: "llm", label: "LLM (kernel / CPU)", sublabel: null, focal: true },
       {
         id: "ctx",
-        label: "컨텍스트 윈도",
-        sublabel: "RAM·작업 메모리",
+        label: "Context window",
+        sublabel: "RAM and working memory",
         focal: false,
       },
       {
         id: "fs",
-        label: "파일 시스템",
-        sublabel: "디스크 + 임베딩(RAG)",
+        label: "File system",
+        sublabel: "Disk + embeddings (RAG)",
         focal: false,
       },
-      { id: "web", label: "브라우저", sublabel: "인터넷", focal: false },
+      { id: "web", label: "Browser", sublabel: "Internet", focal: false },
       {
         id: "tools",
-        label: "기존 소프트웨어 도구",
-        sublabel: "계산기·Python·터미널",
+        label: "Existing software tools",
+        sublabel: "Calculator/Python/terminal",
         focal: false,
       },
-      { id: "other", label: "다른 LLM", sublabel: null, focal: false },
+      { id: "other", label: "Other LLM", sublabel: null, focal: false },
       {
         id: "io",
-        label: "비디오·오디오",
-        sublabel: "주변 장치 I/O",
+        label: "Video/audio",
+        sublabel: "Peripheral I/O",
         focal: false,
       },
     ],
@@ -368,8 +380,8 @@ test("a node label or sublabel the renderer would cut with an ellipsis fails val
         e.code === "INVALID_CONTRACT" &&
         /llm-os-map: node ctx sublabel would be cut/.test(e.message),
     );
-    // Labels the renderer also cut in that run ("기존 소프트웨어 도구", "비디오·오디오") must
-    // shrink too; once everything fits, validation passes.
+    // The translated tools and media labels must shrink too; once everything fits,
+    // validation passes.
     for (const n of block.nodes) {
       n.label = n.label.slice(0, 4);
       if (n.sublabel) n.sublabel = n.sublabel.slice(0, 3);

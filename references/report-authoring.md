@@ -9,7 +9,7 @@ Use [the report schema](../schemas/report.schema.json) and [the evidence schema]
   "schemaVersion": 1,
   "evidenceRef": { "id": "ev-example", "sha256": "ACTUAL_EVIDENCE_FILE_HASH" },
   "mode": "briefing",
-  "outputLanguage": "ko",
+  "outputLanguage": "en",
   "title": "A specific, evidence-grounded title",
   "summary": [
     { "text": "The central claim, retaining its important condition.", "attribution": "source", "citations": [{ "kind": "segment", "id": "seg-000001" }] }
@@ -23,7 +23,7 @@ Use [the report schema](../schemas/report.schema.json) and [the evidence schema]
 }
 ```
 
-Start from `scripts/scaffold.mjs --request "$JOB/request.json" --evidence "$JOB/evidence.json" --work-dir "$JOB"`: it writes this skeleton with the real `evidenceRef` (id and SHA-256 of the exact evidence bytes), mode and language, and prints the block shapes and the IDs you may cite. Do not recompute the hash yourself. Otherwise replace placeholder IDs/hash with actual evidence values. IDs are stable identifiers, not display headings. Use the requested output language; non-Korean interface labels currently fall back to English while report text remains in the requested language.
+Start from `scripts/scaffold.mjs --request "$JOB/request.json" --evidence "$JOB/evidence.json" --work-dir "$JOB"`: it writes this skeleton with the real `evidenceRef` (id and SHA-256 of the exact evidence bytes), mode and language, and prints the block shapes and the IDs you may cite. Do not recompute the hash yourself. Otherwise replace placeholder IDs/hash with actual evidence values. IDs are stable identifiers, not display headings. Use the resolved `request.json.outputLanguage`: an explicit report-language preference, otherwise the user's conversation language, with English only when that language is unknown. Source language is independent. Built-in interface labels remain English for every locale; do not translate or patch them. The renderer preserves authored content and does not translate it.
 
 ## Statement and citation
 

@@ -32,8 +32,8 @@ test("Markdown serializer preserves tables, conditions, code and real timestamp 
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const md = markdownDocument(f.bundle);
-  assert.ok(md.includes("검증된 입력"));
-  assert.ok(md.includes("| 조건"));
+  assert.ok(md.includes("Validated input"));
+  assert.ok(md.includes("| Condition"));
   assert.ok(md.includes("```javascript"));
   assert.ok(md.includes("t=2s"));
   assert.ok(md.includes(f.data.evidenceSha256));
@@ -141,21 +141,21 @@ test("every exact citation survives disclosure, including adjacent times, gaps a
           id: "seg-000004",
           startMs: 6000,
           endMs: 7000,
-          text: "네 번째 행",
+          text: "Fourth row",
           speaker: null,
         },
         {
           id: "seg-000005",
           startMs: 7000,
           endMs: 8000,
-          text: "다섯 번째 행",
+          text: "Fifth row",
           speaker: null,
         },
         {
           id: "seg-000006",
           startMs: null,
           endMs: null,
-          text: "시각 없는 행",
+          text: "Untimed row",
           speaker: null,
         },
       );
@@ -185,18 +185,18 @@ test("every exact citation survives disclosure, including adjacent times, gaps a
     ["seg-000001", "0", "00:00"],
     ["seg-000002", "2000", "00:02"],
     ["seg-000003", "4000", "00:04"],
-    ["seg-000006", null, "전사 6"],
+    ["seg-000006", null, "Transcript 6"],
     ["seg-000005", "7000", "00:07"],
   ]);
   assert.match(html, /class="citation-toggle"[^>]*aria-controls="citation-extra-\d+"/);
   const md = markdownDocument(f.bundle);
   for (const second of [0, 2, 4, 7]) assert.ok(md.includes(`t=${second}s`));
-  assert.ok(md.includes("전사 6"));
+  assert.ok(md.includes("Transcript 6"));
   const print = htmlDocument(f.bundle, [], [], { print: true });
   for (const second of [0, 2, 4, 7]) assert.ok(print.includes(`t&#x3D;${second}s`));
 });
 
-test("Korean reports localize known extraction warnings and keep unknown ones verbatim", async (t) => {
+test("English reports preserve known and unknown extraction warnings verbatim", async (t) => {
   const f = await fixture({
     mutate(d) {
       d.evidence.extraction.warnings = [
@@ -220,15 +220,17 @@ test("Korean reports localize known extraction warnings and keep unknown ones ve
   });
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const html = htmlDocument(f.bundle);
-  assert.ok(html.includes("자동 생성된 것으로"));
-  assert.ok(!html.includes("automatically generated"));
+  assert.ok(html.includes("The source captions were automatically generated and may contain transcription errors."));
+  assert.equal((html.match(/automatically generated/g) ?? []).length, 1);
   assert.ok(html.includes("An English message the renderer has never seen."));
-  assert.ok(markdownDocument(f.bundle).includes("자동 생성된 것으로"));
+  assert.ok(markdownDocument(f.bundle).includes("The source captions were automatically generated and may contain transcription errors."));
 });
 
-test("Korean reports localize known extraction warnings and keep unknown ones verbatim", async (t) => {
+test("non-English report tags do not translate known or unknown extraction warnings", async (t) => {
   const f = await fixture({
     mutate(d) {
+      // UI warnings stay English regardless of the requested report language.
+      d.request.outputLanguage = d.report.outputLanguage = "ko";
       d.evidence.extraction.warnings = [
         {
           code: "AUTOMATIC_CAPTIONS",
@@ -250,8 +252,8 @@ test("Korean reports localize known extraction warnings and keep unknown ones ve
   });
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const html = htmlDocument(f.bundle);
-  assert.ok(html.includes("자동 생성된 것으로"));
-  assert.ok(!html.includes("automatically generated"));
+  assert.ok(html.includes("The source captions were automatically generated and may contain transcription errors."));
+  assert.equal((html.match(/automatically generated/g) ?? []).length, 1);
   assert.ok(html.includes("An English message the renderer has never seen."));
-  assert.ok(markdownDocument(f.bundle).includes("자동 생성된 것으로"));
+  assert.ok(markdownDocument(f.bundle).includes("The source captions were automatically generated and may contain transcription errors."));
 });

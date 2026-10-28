@@ -46,13 +46,13 @@ test("canary classification separates platform gates from broken adapters and ca
 });
 
 test("fake tool executables preserve exact arguments, binary stdio and exit status", async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "fake 한글 ' tool "));
+  const root = await mkdtemp(path.join(os.tmpdir(), "fake café ' tool "));
   t.after(() => rm(root, { recursive: true, force: true }));
   const executable = await fakeTool(
-    path.join(root, "가짜 ' executable"),
+    path.join(root, "fake ' executable"),
     'process.stdin.pipe(process.stdout); process.stdin.on("end", () => { process.stderr.write(JSON.stringify(process.argv.slice(2))); process.exitCode = 37; });',
   );
-  const args = ["", "space value", "한글", 'a"b', "\\", "end\\", 'a\\"b', "&|<>^%!\t\n"];
+  const args = ["", "space value", "café🙂", 'a"b', "\\", "end\\", 'a\\"b', "&|<>^%!\t\n"];
   const input = Buffer.from([0, 1, 2, 10, 13, 255]);
   const child = spawn(executable, args, { shell: false, windowsHide: true });
   const stdout = [], stderr = [];
@@ -78,7 +78,7 @@ test("canary refuses local sources and probes yt-dlp with --simulate and the sam
         schemaVersion: 1,
         source: { kind: "local", value: "/tmp/x.mp4" },
         mode: "briefing",
-        outputLanguage: "ko",
+        outputLanguage: "en",
       }),
     );
     await assert.rejects(
@@ -101,7 +101,7 @@ test("canary refuses local sources and probes yt-dlp with --simulate and the sam
           value: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
         },
         mode: "briefing",
-        outputLanguage: "ko",
+        outputLanguage: "en",
         policy: { extractTimeoutMs: 1000 },
       }),
     );
@@ -139,7 +139,7 @@ test("canary refuses local sources and probes yt-dlp with --simulate and the sam
       "https://example.com/watch?v=jNQXAC9IVRw",
     ]) {
       const bad = path.join(root, "bad.json");
-      await writeFile(bad, JSON.stringify({ schemaVersion: 1, source: { kind: "url", value }, mode: "briefing", outputLanguage: "ko" }));
+      await writeFile(bad, JSON.stringify({ schemaVersion: 1, source: { kind: "url", value }, mode: "briefing", outputLanguage: "en" }));
       await assert.rejects(
         () => canary({ request: bad, "work-dir": root, "yt-dlp-executable": fake }),
         (e) => e.code === "INVALID_CONTRACT",
@@ -148,7 +148,7 @@ test("canary refuses local sources and probes yt-dlp with --simulate and the sam
     }
     assert.ok(!(await readFile(log, "utf8").catch(() => null)), "yt-dlp was never invoked for rejected URLs");
     const tracking = path.join(root, "tracking.json");
-    await writeFile(tracking, JSON.stringify({ schemaVersion: 1, source: { kind: "url", value: "https://youtu.be/jNQXAC9IVRw?si=tracker&t=5" }, mode: "briefing", outputLanguage: "ko", policy: { extractTimeoutMs: 1000 } }));
+    await writeFile(tracking, JSON.stringify({ schemaVersion: 1, source: { kind: "url", value: "https://youtu.be/jNQXAC9IVRw?si=tracker&t=5" }, mode: "briefing", outputLanguage: "en", policy: { extractTimeoutMs: 1000 } }));
     await canary({ request: tracking, "work-dir": root, "yt-dlp-executable": fake }).catch((e) => e);
     assert.equal(JSON.parse(await readFile(log, "utf8")).at(-1), "https://www.youtube.com/watch?v=jNQXAC9IVRw");
   } finally {

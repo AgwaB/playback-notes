@@ -116,7 +116,7 @@ before(async () => {
   );
   await writeFile(
     srt,
-    "1\n00:00:00,100 --> 00:00:00,700\nHello <script>untrusted()</script>.\n\n2\n00:00:00,600 --> 00:00:01,000\n겹치는 자막.\n",
+    "1\n00:00:00,100 --> 00:00:00,700\nHello <script>untrusted()</script>.\n\n2\n00:00:00,600 --> 00:00:01,000\nOverlapping subtitle.\n",
   );
   await writeFile(
     vtt,
@@ -227,16 +227,21 @@ test("default ASR off fails honestly, including with fake ambient cloud keys and
     process.env[key] = "fake-ingest-test-value";
   try {
     const resultEnv = isolatedEnvironment(root);
-    assert.deepEqual(Object.keys(resultEnv).sort(), [
-      "HOME",
-      "LANG",
-      "LC_ALL",
-      "PATH",
-      "SUMMARIZE_DISABLE_LOCAL_TRANSCRIPTION",
-      "SUMMARIZE_DISABLE_LOCAL_WHISPER_CPP",
-      "TMPDIR",
-      ...(process.platform === "win32" ? ["SystemRoot", "TEMP", "TMP", "USERPROFILE"] : []),
-    ].sort());
+    assert.deepEqual(
+      Object.keys(resultEnv).sort(),
+      [
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "PATH",
+        "SUMMARIZE_DISABLE_LOCAL_TRANSCRIPTION",
+        "SUMMARIZE_DISABLE_LOCAL_WHISPER_CPP",
+        "TMPDIR",
+        ...(process.platform === "win32"
+          ? ["SystemRoot", "TEMP", "TMP", "USERPROFILE"]
+          : []),
+      ].sort(),
+    );
     await assert.rejects(
       extractSource(
         request({
@@ -313,8 +318,14 @@ test("explicit mock whisper.cpp exercises only the local adapter and real ffmpeg
   assert.equal(result.extraction.provider, "whisper.cpp");
   assert.equal(result.extraction.providerVersion, "1.7.6");
   assert.equal(result.segments[0].text, "Mock local adapter text.");
-  const notice = result.extraction.warnings.find((warning) => warning.code === "ASR_UNVERIFIED");
-  assert.match(notice.message, /timing/i, "ASR timing uncertainty must be disclosed");
+  const notice = result.extraction.warnings.find(
+    (warning) => warning.code === "ASR_UNVERIFIED",
+  );
+  assert.match(
+    notice.message,
+    /timing/i,
+    "ASR timing uncertainty must be disclosed",
+  );
   assert.match(notice.message, /language/i, "language changes can lose speech");
   assert.ok(
     result.extraction.warnings.some((w) => w.code === "ASR_MODEL_COMPACT"),
@@ -325,12 +336,17 @@ test("explicit mock whisper.cpp exercises only the local adapter and real ffmpeg
   const turbo = path.join(root, "renamed-model.bin");
   const header = Buffer.alloc(48);
   header.write("lmgg");
-  [51866, 1500, 1280, 20, 32, 448, 1280, 20, 4, 128, 2008]
-    .forEach((value, i) => header.writeInt32LE(value, 4 + i * 4));
+  [51866, 1500, 1280, 20, 32, 448, 1280, 20, 4, 128, 2008].forEach((value, i) =>
+    header.writeInt32LE(value, 4 + i * 4),
+  );
   await writeFile(turbo, header);
   const quantized = await extractSource(
     request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
-    { workDir: path.join(jobs, "turbo"), localAsrExecutable: executable, localAsrModel: turbo },
+    {
+      workDir: path.join(jobs, "turbo"),
+      localAsrExecutable: executable,
+      localAsrModel: turbo,
+    },
   );
   assert.ok(
     !quantized.extraction.warnings.some((w) => w.code === "ASR_MODEL_COMPACT"),
@@ -363,15 +379,25 @@ test("ASR segments matching phrases Whisper invents over music are flagged by ID
   await writeFile(model, "offline test placeholder, not a speech model");
   const executable = await fakeTool(
     path.join(root, "mock-whisper-credit"),
-    `import fs from 'node:fs';\nif (process.argv.includes('--version')) { console.log('whisper.cpp version: 1.9.5-dev'); process.exit(0); }\nif (process.argv.includes('--help')) process.exit(7);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,000 --> 00:00:00,300\\n한글자막 by 한효정\\n\\n2\\n00:00:00,400 --> 00:00:00,800\\n오늘 제가 얘기할 주제는요\\n');\n`,
+    `import fs from 'node:fs';\nif (process.argv.includes('--version')) { console.log('whisper.cpp version: 1.9.5-dev'); process.exit(0); }\nif (process.argv.includes('--help')) process.exit(7);\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,000 --> 00:00:00,300\\nSubtitles by Jane Doe\\n\\n2\\n00:00:00,400 --> 00:00:00,800\\nToday I will discuss the topic\\n');\n`,
   );
   const result = await extractSource(
     request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
-    { workDir: path.join(jobs, "credit"), localAsrExecutable: executable, localAsrModel: model },
+    {
+      workDir: path.join(jobs, "credit"),
+      localAsrExecutable: executable,
+      localAsrModel: model,
+    },
   );
   assert.equal(result.segments.length, 2, "nothing is removed");
-  assert.equal(result.extraction.providerVersion, "1.9.5", "current whisper.cpp reports its version through --version");
-  const flagged = result.extraction.warnings.find((w) => w.code === "ASR_SUSPECT_SEGMENTS");
+  assert.equal(
+    result.extraction.providerVersion,
+    "1.9.5",
+    "current whisper.cpp reports its version through --version",
+  );
+  const flagged = result.extraction.warnings.find(
+    (w) => w.code === "ASR_SUSPECT_SEGMENTS",
+  );
   assert.ok(flagged);
   assert.match(flagged.message, /^seg-000001 match/);
   assert.doesNotMatch(flagged.message, /seg-000002/);
@@ -386,16 +412,27 @@ test("a whisper build that answers neither --version nor --help keeps its finish
   );
   const result = await extractSource(
     request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
-    { workDir: path.join(jobs, "noversion"), localAsrExecutable: executable, localAsrModel: model },
+    {
+      workDir: path.join(jobs, "noversion"),
+      localAsrExecutable: executable,
+      localAsrModel: model,
+    },
   );
   assert.equal(result.segments[0].text, "Kept transcript.");
   assert.equal(result.extraction.providerVersion, "unknown");
   // R8-5: provenance probes run before the expensive transcription, never after it.
-  assert.deepEqual((await readFile(path.join(root, "noversion-trace.log"), "utf8")).trim().split("\n"), ["--version", "--help", "transcribe"]);
+  assert.deepEqual(
+    (await readFile(path.join(root, "noversion-trace.log"), "utf8"))
+      .trim()
+      .split("\n"),
+    ["--version", "--help", "transcribe"],
+  );
 });
 
 test("cancelling extraction also stops a running local tool and what it started (round 8 R8-1)", {
-  skip: process.platform === "win32" && "Windows stops the worker tree with taskkill /T",
+  skip:
+    process.platform === "win32" &&
+    "Windows stops the worker tree with taskkill /T",
 }, async () => {
   const model = path.join(root, "mock-model.bin");
   await writeFile(model, "offline test placeholder, not a speech model");
@@ -407,7 +444,12 @@ test("cancelling extraction also stops a running local tool and what it started 
   const controller = new AbortController();
   const running = extractSource(
     request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
-    { workDir: path.join(jobs, "cancel-tool"), localAsrExecutable: executable, localAsrModel: model, signal: controller.signal },
+    {
+      workDir: path.join(jobs, "cancel-tool"),
+      localAsrExecutable: executable,
+      localAsrModel: model,
+      signal: controller.signal,
+    },
   );
   for (let i = 0; i < 100; i++) {
     if (await readFile(pidFile, "utf8").catch(() => null)) break;
@@ -416,18 +458,51 @@ test("cancelling extraction also stops a running local tool and what it started 
   controller.abort();
   await assert.rejects(running, { code: "CANCELLED" });
   const pids = (await readFile(pidFile, "utf8")).split(" ").map(Number);
-  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-  for (let i = 0; i < 20 && pids.some(alive); i++) await new Promise((r) => setTimeout(r, 100));
+  const alive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  for (let i = 0; i < 20 && pids.some(alive); i++)
+    await new Promise((r) => setTimeout(r, 100));
   const survivors = pids.filter(alive);
   for (const pid of survivors) process.kill(pid, "SIGKILL");
-  assert.deepEqual(survivors, [], "the tool and its child were stopped with the extraction");
+  assert.deepEqual(
+    survivors,
+    [],
+    "the tool and its child were stopped with the extraction",
+  );
 });
 
 test("the invented-phrase pattern flags credits and outros, not ordinary speech about captions", async () => {
   const { asrInventedForTest: re } = await import("../lib/ingest-worker.mjs");
-  for (const t of ["한글자막 by 한효정", "자막 제공: 배달의민족", "시청해주셔서 감사합니다", "구독과 좋아요 부탁드려요", "Thanks for watching!", "Subtitles by the Amara.org community", "字幕由Amara.org社区提供", "ご視聴ありがとうございました"])
+  for (const t of [
+    "한글자막 by 한효정",
+    "자막 제공: 배달의민족",
+    "시청해주셔서 감사합니다",
+    "구독과 좋아요 부탁드려요",
+    "Subtitles by Jane Doe",
+    "Captions by Example Studio",
+    "Thank you for watching",
+    "Please subscribe and like",
+    "Thanks for watching!",
+    "Subtitles by the Amara.org community",
+    "字幕由Amara.org社区提供",
+    "ご視聴ありがとうございました",
+  ])
     assert.ok(re.test(t), t);
-  for (const t of ["The captions bypass the video processing layer.", "普通の字幕を表示します", "자막을 켜 주세요", "Closed captions: on", "오늘 제가 얘기할 주제는요"])
+  for (const t of [
+    "자막을 켜 주세요",
+    "오늘 제가 얘기할 주제는요",
+    "The captions bypass the video processing layer.",
+    "普通の字幕を表示します",
+    "Please turn on captions",
+    "Closed captions: on",
+    "Today I will discuss the topic",
+  ])
     assert.ok(!re.test(t), t);
 });
 
@@ -468,11 +543,28 @@ test("fingerprint reads shared runtime files once per call and re-reads changed 
   const runtime = path.join(root, "fingerprint-runtime");
   const alias = path.join(root, "fingerprint-runtime-alias");
   await mkdir(runtime);
-  await symlink(runtime, alias, process.platform === "win32" ? "junction" : "dir");
-  const cpu = path.join(runtime, "whisper"), model = path.join(runtime, "model.bin"), library = path.join(runtime, "ggml-cuda.dll");
-  await Promise.all([writeFile(cpu, "runtime"), writeFile(model, "model 1"), writeFile(library, "library 1")]);
-  const opts = { localAsrExecutable: cpu, localAsrGpuExecutable: path.join(alias, "whisper"), localAsrModel: model };
-  const input = request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } });
+  await symlink(
+    runtime,
+    alias,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const cpu = path.join(runtime, "whisper"),
+    model = path.join(runtime, "model.bin"),
+    library = path.join(runtime, "ggml-cuda.dll");
+  await Promise.all([
+    writeFile(cpu, "runtime"),
+    writeFile(model, "model 1"),
+    writeFile(library, "library 1"),
+  ]);
+  const opts = {
+    localAsrExecutable: cpu,
+    localAsrGpuExecutable: path.join(alias, "whisper"),
+    localAsrModel: model,
+  };
+  const input = request({
+    transcriptFile: null,
+    policy: { ...basePolicy, asr: "local" },
+  });
   const original = fs.createReadStream;
   const reads = [];
   const mock = t.mock.method(fs, "createReadStream", (file, options) => {
@@ -488,7 +580,11 @@ test("fingerprint reads shared runtime files once per call and re-reads changed 
         // Match regularFile's native canonical path: realpathSync's JS fallback can
         // preserve Windows TEMP casing or short names that async realpath expands.
         const canonical = await realpath(file);
-        assert.equal(reads.filter((read) => read === canonical).length, 1, `${path.basename(file)} is read once`);
+        assert.equal(
+          reads.filter((read) => read === canonical).length,
+          1,
+          `${path.basename(file)} is read once`,
+        );
       }
       assert.equal(reads.length, 4, "aliases do not cause a second file read");
       return result;
@@ -496,9 +592,17 @@ test("fingerprint reads shared runtime files once per call and re-reads changed 
     const first = await fingerprint();
     await writeFile(model, "model 2");
     const second = await fingerprint();
-    assert.notEqual(second, first, "same-size model edits invalidate the next snapshot");
+    assert.notEqual(
+      second,
+      first,
+      "same-size model edits invalidate the next snapshot",
+    );
     await writeFile(library, "library 2");
-    assert.notEqual(await fingerprint(), second, "same-size runtime library edits are not cached across calls");
+    assert.notEqual(
+      await fingerprint(),
+      second,
+      "same-size runtime library edits are not cached across calls",
+    );
   } finally {
     mock.mock.restore();
     syncBuiltinESMExports();
@@ -514,9 +618,22 @@ test("an explicit transcript does not require or fingerprint unused ASR tools; v
     localAsrCodeSwitch: "ko-en",
     ytDlpExecutable: path.join(root, "missing-downloader"),
   };
-  assert.equal(await ingestionFingerprint(input, unavailable), await ingestionFingerprint(input));
-  const visual = { ...input, source: { kind: "url", value: "https://www.youtube.com/watch?v=jNQXAC9IVRw" }, policy: { ...input.policy, visual: "frames" } };
-  await assert.rejects(ingestionFingerprint(visual, unavailable), code("CAPABILITY_MISSING"));
+  assert.equal(
+    await ingestionFingerprint(input, unavailable),
+    await ingestionFingerprint(input),
+  );
+  const visual = {
+    ...input,
+    source: {
+      kind: "url",
+      value: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+    },
+    policy: { ...input.policy, visual: "frames" },
+  };
+  await assert.rejects(
+    ingestionFingerprint(visual, unavailable),
+    code("CAPABILITY_MISSING"),
+  );
   const downloader = path.join(root, "fingerprint-downloader");
   await writeFile(downloader, "version 1");
   const options = { ...unavailable, ytDlpExecutable: downloader };
@@ -773,7 +890,8 @@ function playerFixture(overrides = {}) {
 test("mock YouTube watch/caption response uses public parser, manual-first selection, nullable times and no fallback ladder", async () => {
   // Same language, auto-generated listed first: the manual track wins.
   const player = playerFixture();
-  player.captions.playerCaptionsTracklistRenderer.captionTracks[0].languageCode = "en";
+  player.captions.playerCaptionsTracklistRenderer.captionTracks[0].languageCode =
+    "en";
   const calls = [];
   const html = `<script>var ytInitialPlayerResponse = ${JSON.stringify(player)}; window.untrusted = 'not executed';</script>`;
   assert.deepEqual(readYoutubePlayer(html), player);
@@ -907,7 +1025,10 @@ test("U4: the tool deadline and cancellation stay armed until the final queued w
     }),
     code("TIMEOUT"),
   );
-  assert.ok(Date.now() - started < 380, "timed out during the pending write, not after it");
+  assert.ok(
+    Date.now() - started < 380,
+    "timed out during the pending write, not after it",
+  );
   const controller = new AbortController();
   setTimeout(() => controller.abort(), 100);
   await assert.rejects(
@@ -921,7 +1042,11 @@ test("U4: the tool deadline and cancellation stay armed until the final queued w
   );
   // A write that completes within the budget still succeeds.
   assert.equal(
-    await runLocalTool(process.execPath, ["-e", 'process.stdout.write("x")'], { workDir: root, timeoutMs: 5000, onChunk: () => new Promise((r) => setTimeout(r, 50)) }),
+    await runLocalTool(process.execPath, ["-e", 'process.stdout.write("x")'], {
+      workDir: root,
+      timeoutMs: 5000,
+      onChunk: () => new Promise((r) => setTimeout(r, 50)),
+    }),
     "",
   );
 });

@@ -274,7 +274,7 @@ test("port zero retries a browser-blocked OS allocation and releases the rejecte
   assert.equal(running.server.listenerCount("error"), 0, "startup error handlers must not accumulate after retries");
   const response = await fetch(running.url);
   assert.equal(response.status, 200);
-  assert.match(await response.text(), /근거 중심 영상 리포트/);
+  assert.match(await response.text(), /Evidence-based video report/);
   await new Promise((resolve, reject) => {
     probe.once("error", reject);
     probe.listen(blockedPort, "127.0.0.1", resolve);

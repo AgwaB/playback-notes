@@ -54,7 +54,7 @@ test("gallery timestamps use the same source controls as body citations", {
     assert.equal(await link.count(), 1, "gallery must expose a citation control even without a public original URL");
     const attributes = await link.evaluate((anchor) => ({ ms: anchor.getAttribute("data-ms"), original: anchor.getAttribute("data-original"), anchor: anchor.dataset.anchor, label: anchor.textContent }));
     await link.click();
-    await page.waitForFunction(() => document.querySelector("#player-status").textContent.includes("재생할 수 없습니다"));
+    await page.waitForFunction(() => document.querySelector("#player-status").textContent.includes("Playback unavailable"));
     assert.equal(await page.locator("#source-panel").isVisible(), true);
     const fallback = await page.locator("#source-fallback").count()
       ? await page.locator("#source-fallback").getAttribute("href") : null;
@@ -65,7 +65,7 @@ test("gallery timestamps use the same source controls as body citations", {
     assert.equal(attributes.anchor, "frame-frame-gallery");
     assert.equal(attributes.original, expected);
     assert.ok(attributes.label.trim());
-    assert.ok((await page.locator(".cited-frames img").getAttribute("alt")).startsWith("인용한 화면 "));
+    assert.ok((await page.locator(".cited-frames img").getAttribute("alt")).startsWith("Cited frames "));
     await page.keyboard.press("Escape");
     assert.equal(await page.locator("#source-panel").isVisible(), false);
     assert.equal(await link.evaluate((anchor) => document.activeElement === anchor), true);

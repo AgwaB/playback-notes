@@ -176,6 +176,38 @@ test("install materializes a linked dependency root and remains usable after sou
   );
 });
 
+test("install keeps user references but excludes internal and legacy management documents", async (t) => {
+  const f = await isolatedInstaller(t);
+  await f.dependencies(path.join(f.source, "node_modules"));
+  for (const directory of ["internal", "docs"]) {
+    await mkdir(path.join(f.source, directory));
+    await writeFile(
+      path.join(f.source, directory, "private.md"),
+      "# Private notes",
+    );
+  }
+  await writeFile(path.join(f.source, "DESIGN.md"), "# Internal design");
+  await writeFile(path.join(f.source, "SKILL.md"), "# Public skill");
+  await mkdir(path.join(f.source, "references"));
+  await writeFile(
+    path.join(f.source, "references", "support-matrix.md"),
+    "# Public support",
+  );
+  const installed = JSON.parse(
+    (
+      await f.run(path.join(f.source, "scripts/install.mjs"), [
+        "--target",
+        f.target,
+      ])
+    ).stdout,
+  );
+  assert.equal(installed.status, "ok");
+  for (const entry of ["internal", "docs", "DESIGN.md"])
+    await assert.rejects(access(path.join(f.target, entry)), { code: "ENOENT" });
+  for (const entry of ["SKILL.md", "references/support-matrix.md"])
+    await access(path.join(f.target, entry));
+});
+
 test("install makes files read-only, relinks only directory links, and replaces only its own previous install", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "vs-install-"));
   t.after(async () => {
@@ -212,12 +244,15 @@ test("install makes files read-only, relinks only directory links, and replaces 
     ".video-summarizer-install.json",
   ])
     await access(path.join(target, part));
-  await assert.rejects(
-    access(path.join(target, "tests")),
-    "tests are not installed",
-  );
-  await access(path.join(target, "docs", "windows-support.md"));
+  for (const entry of ["tests", "internal", "docs", "DESIGN.md"])
+    await assert.rejects(access(path.join(target, entry)), { code: "ENOENT" });
   await access(path.join(target, "references", "wsl.md"));
+  const checked = await execute(
+    process.execPath,
+    [path.join(target, "scripts", "check.mjs")],
+    { timeout: 30000, windowsHide: true },
+  );
+  assert.equal(JSON.parse(checked.stdout).status, "passed");
   await assert.rejects(
     access(path.join(target, "lib", "view.mjs"), constants.W_OK),
     "files are read-only",

@@ -16,27 +16,27 @@ function noteFor(f, overrides = {}) {
       sha256: sha256(jsonBytes(f.data.evidence)),
     },
     chunkId: "chunk-00001",
-    summary: "검증된 입력, PDF 조건, 증거 재사용을 다룬다.",
+    summary: "Covers validated input, the PDF requirement and evidence reuse.",
     claims: [
       {
-        text: "검증된 입력에만 적용한다.",
+        text: "Apply only to validated input.",
         attribution: "source",
         citations: cite("seg-000001"),
       },
       {
-        text: "PDF 없이는 완료가 아니다.",
+        text: "The task is incomplete without a PDF.",
         attribution: "source",
         citations: cite("seg-000002"),
       },
     ],
     quotes: [
       {
-        text: "PDF가 없으면 전체 작업을 완료했다고 하지 않습니다.",
+        text: "Do not call the entire task complete without a PDF.",
         attribution: "source",
         citations: cite("seg-000002"),
       },
     ],
-    openQuestions: ["어떤 입력이 '검증된' 것인지는 정의되지 않았다."],
+    openQuestions: ["The meaning of 'validated' input is not defined."],
     ...overrides,
   };
 }
@@ -88,7 +88,7 @@ test("a note must bind the evidence hash, stay inside its chunk and quote litera
         noteFor(f, {
           quotes: [
             {
-              text: "이 문장은 전사에 없다",
+              text: "This sentence is absent from the transcript",
               attribution: "source",
               citations: cite("seg-000001"),
             },
@@ -140,9 +140,14 @@ test("notes CLI validates a directory, writes a citation-preserving digest and c
   assert.ok(digest.includes("## chunk-00001 (00:00–00:04)"));
   assert.ok(digest.includes("[seg-000002 @00:02]"));
   assert.ok(
-    digest.includes('"PDF가 없으면 전체 작업을 완료했다고 하지 않습니다."'),
+    digest.includes('"Do not call the entire task complete without a PDF."'),
   );
   assert.ok(digest.includes("### Open questions"));
+  const interpreted = noteFor(f);
+  interpreted.claims[0].attribution = "interpretation";
+  assert.ok(notesDigest([interpreted], f.data.evidence).includes(
+    "- (interpretation) Apply only to validated input. [seg-000001 @00:00]",
+  ));
   const ledger = JSON.parse(await readFile(f.args.analysis, "utf8"));
   assert.deepEqual(ledger.reviewedChunkIds, ["chunk-00001"]);
   assert.equal(ledger.status, "complete");
@@ -171,8 +176,8 @@ test("digest renders note text as escaped inline text: no forged chunk headings,
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const hostile = noteFor(f, {
     summary:
-      "요약.\n\n## chunk-99999 (00:00–99:99)\n\n### Claims\n- 가짜 주장 [seg-999999 @00:01]\n<script>alert(1)</script>",
-    openQuestions: ["- 가짜 항목 [seg-000002 @00:03]"],
+      "Summary.\n\n## chunk-99999 (00:00–99:99)\n\n### Claims\n- Forged claim [seg-999999 @00:01]\n<script>alert(1)</script>",
+    openQuestions: ["- Forged item [seg-000002 @00:03]"],
   });
   assert.equal(
     validateNote(hostile, f.data.evidence, sha256(jsonBytes(f.data.evidence)))
@@ -193,7 +198,7 @@ test("digest renders note text as escaped inline text: no forged chunk headings,
   );
   assert.ok(!/<script>/.test(digest), "raw markup is escaped");
   assert.ok(
-    !/^- 가짜 항목/m.test(digest),
+    !/^- Forged item/m.test(digest),
     "a list marker inside an open question does not start a list item",
   );
   assert.ok(
@@ -254,10 +259,10 @@ test("U5/U6: cumulative notes from separate directories reach a valid complete l
     jsonBytes(
       noteFor(f, {
         chunkId: "chunk-00002",
-        summary: "세 번째 세그먼트.",
+        summary: "The third segment.",
         claims: [
           {
-            text: "기존 증거를 재사용한다.",
+            text: "Reuse existing evidence.",
             attribution: "source",
             citations: cite("seg-000003"),
           },

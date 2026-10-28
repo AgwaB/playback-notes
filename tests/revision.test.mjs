@@ -363,7 +363,7 @@ test("publishTranscript false keeps seekable timestamps but no transcript text; 
       `transcript text must not appear in the panel: ${segment.text.slice(0, 30)}`,
     );
   assert.ok(panel.includes('id="tx-seg-000001"'), "citation anchors remain");
-  assert.ok(html.includes("전체 자막은 이 문서에 포함하지 않았습니다"));
+  assert.ok(html.includes("The full transcript is not included in this document; see the source."));
   const manifest = (await readJson(path.join(f.out, "manifest.json"))).data;
   assert.equal(manifest.publishTranscript, false);
   // Flipping the policy for the same revision is refused (sharing policy changed).

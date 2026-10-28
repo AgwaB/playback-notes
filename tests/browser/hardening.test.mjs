@@ -480,7 +480,7 @@ test(
     await page.waitForFunction(() =>
       document
         .getElementById("player-status")
-        .textContent.includes("재생할 수 없습니다"),
+        .textContent.includes("Playback unavailable"),
     );
     await page.locator('.transcript-time[data-ms="4000"]').click();
     assert.equal(

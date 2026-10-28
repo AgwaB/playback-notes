@@ -16,7 +16,7 @@ const execute = promisify(execFile);
 test("Windows extraction retains native tool lookup and private temp/profile paths", {
   skip: process.platform !== "win32",
 }, async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "windows 환경 "));
+  const root = await mkdtemp(path.join(os.tmpdir(), "windows café "));
   t.after(() => rm(root, { recursive: true, force: true }));
   const env = isolatedEnvironment(root);
   assert.equal(env.SystemRoot, process.env.SystemRoot);
@@ -48,8 +48,8 @@ test("portable asset paths reject NTFS streams, devices and Windows aliases befo
     await assert.rejects(copyMedia(input, output, relative, 1024), { code: "UNSAFE_PATH" }, relative);
   }
   assert.equal(await readFile(path.join(output, "manifest.json"), "utf8"), "original");
-  await atomicWrite(output, "assets/한글 frame.txt", "safe");
-  assert.equal(await readFile(await containedFile(output, "assets/한글 frame.txt"), "utf8"), "safe");
+  await atomicWrite(output, "assets/café frame.txt", "safe");
+  assert.equal(await readFile(await containedFile(output, "assets/café frame.txt"), "utf8"), "safe");
 });
 
 test("Windows ASR output streams through a private named pipe with a strict byte cap", {
@@ -61,7 +61,7 @@ test("Windows ASR output streams through a private named pipe with a strict byte
   const emit = (text) => (base, signal) => runLocalTool(process.execPath, [
     "-e", "require('node:fs').writeFileSync(process.argv[1],process.argv[2])", `${base}.srt`, text,
   ], { ...options, signal });
-  assert.equal(await readAsrOutput(path.join(root, "output"), options, emit("한글 transcript")), "한글 transcript");
+  assert.equal(await readAsrOutput(path.join(root, "output"), options, emit("English 🙂 transcript")), "English 🙂 transcript");
   await assert.rejects(readAsrOutput(path.join(root, "output"), options, emit("x".repeat(2048))), { code: "RESOURCE_LIMIT" });
   await assert.rejects(readAsrOutput(path.join(root, "output"), options, async () => {
     throw Object.assign(new Error("producer failed before opening pipe"), { code: "SOURCE_UNSUPPORTED" });

@@ -8,11 +8,12 @@ import { render } from "../scripts/render.mjs";
 import { exportReport } from "../scripts/export.mjs";
 import { fixture } from "./helpers.mjs";
 
-test("unspecified formats finish with HTML and Markdown without a PDF runtime", async (t) => {
+test("unspecified language and formats finish in English with HTML and Markdown without a PDF runtime", async (t) => {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const request = { ...f.data.request };
   delete request.formats;
+  delete request.outputLanguage;
   await writeFile(f.args.request, jsonBytes(request));
   await render(f.args);
   const result = await exportReport(f.args);
@@ -22,16 +23,32 @@ test("unspecified formats finish with HTML and Markdown without a PDF runtime", 
   const manifest = (await readJson(path.join(f.out, "manifest.json"))).data;
   assert.deepEqual(manifest.requestedFormats, ["html", "markdown"]);
   assert.equal(manifest.overallStatus, "completed");
-  assert.ok(manifest.artifacts.some((entry) => entry.format === "markdown" && entry.status === "created"));
+  assert.ok(
+    manifest.artifacts.some(
+      (entry) => entry.format === "markdown" && entry.status === "created",
+    ),
+  );
   assert.ok(!manifest.artifacts.some((entry) => entry.format === "pdf"));
   const html = await readFile(path.join(f.out, "index.html"), "utf8");
+  assert.match(html, /<html lang="en"/);
   assert.match(html, /href="report.md"/);
   assert.doesNotMatch(html, /href="report.pdf"/);
 });
 
 test("explicit export preferences still override the lightweight defaults", () => {
-  const request = { schemaVersion: 1, source: { kind: "url", value: "https://example.com/video.mp4" }, mode: "briefing", outputLanguage: "ko" };
+  const request = {
+    schemaVersion: 1,
+    source: { kind: "url", value: "https://example.com/video.mp4" },
+    mode: "briefing",
+    outputLanguage: "ko",
+  };
   assert.deepEqual(normalizeRequest(request).formats, ["html", "markdown"]);
-  assert.deepEqual(normalizeRequest({ ...request, formats: ["html", "pdf"] }).formats, ["html", "pdf"]);
-  assert.deepEqual(normalizeRequest({ ...request, formats: ["html"] }).formats, ["html"]);
+  assert.deepEqual(
+    normalizeRequest({ ...request, formats: ["html", "pdf"] }).formats,
+    ["html", "pdf"],
+  );
+  assert.deepEqual(
+    normalizeRequest({ ...request, formats: ["html"] }).formats,
+    ["html"],
+  );
 });

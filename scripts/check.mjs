@@ -10,6 +10,7 @@ const excluded = new Set([
   ".pi",
   ".video-summarizer",
   "artifacts",
+  "internal",
   "coverage",
   ".ruff_cache",
 ]);
@@ -49,9 +50,20 @@ for (const file of await files(root)) {
       if (!target || /^[a-z][a-z\d+.-]*:/i.test(target)) continue;
       counts.localLinks++;
       try {
-        await access(
-          path.resolve(path.dirname(file), decodeURIComponent(target)),
+        const resolved = path.resolve(
+          path.dirname(file),
+          decodeURIComponent(target),
         );
+        if (
+          path.relative(root, resolved).split(path.sep)[0].toLowerCase() ===
+          "internal"
+        ) {
+          errors.push(
+            `${path.relative(root, file)}: link to internal document ${target}`,
+          );
+          continue;
+        }
+        await access(resolved);
       } catch {
         errors.push(`${path.relative(root, file)}: broken link ${target}`);
       }

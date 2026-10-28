@@ -65,12 +65,12 @@ before(async () => {
   );
   await writeFile(
     srt,
-    "1\n00:00:00,500 --> 00:00:01,500\n첫 번째 슬라이드 설명입니다.\n",
+    "1\n00:00:00,500 --> 00:00:01,500\nThis describes the first slide.\n",
   );
   // Mock tesseract: emits deterministic text per frame; repeats the second frame's text to exercise dedupe.
   tesseract = await fakeTool(
     path.join(root, "tesseract"),
-    `const f=process.argv[2];const n=Number(/frame-(\\d+)/.exec(f)?.[1]??0);const texts={1:"보관 온도는 20도 이하 <script>x</script>",2:"보관 온도는 20도 이하 <script>x</script>",3:"a"};process.stdout.write(texts[n]??("frame text number "+n));\n`,
+    `const f=process.argv[2];const n=Number(/frame-(\\d+)/.exec(f)?.[1]??0);const texts={1:"Storage temperature is at most 20 C <script>x</script>",2:"Storage temperature is at most 20 C <script>x</script>",3:"a"};process.stdout.write(texts[n]??("frame text number "+n));\n`,
   );
 });
 after(async () => {
@@ -81,7 +81,7 @@ const request = (policy = {}) =>
     schemaVersion: 1,
     source: { kind: "local", value: media },
     mode: "briefing",
-    outputLanguage: "ko",
+    outputLanguage: "en",
     formats: ["html"],
     transcriptFile: srt,
     policy: { asr: "off", ...policy },
@@ -98,7 +98,7 @@ test("local OCR samples scene changes with ffmpeg, OCRs via the explicit executa
   assert.ok(result.frames.length >= 1, "at least one readable frame");
   const first = result.frames[0];
   assert.match(first.assetPath, /^assets\/frame-\d{4}\.jpg$/);
-  assert.equal(first.ocrText, "보관 온도는 20도 이하 <script>x</script>");
+  assert.equal(first.ocrText, "Storage temperature is at most 20 C <script>x</script>");
   assert.ok(first.width === 320 && first.height === 180);
   assert.ok(
     Number.isInteger(first.timestampMs) &&
@@ -106,7 +106,7 @@ test("local OCR samples scene changes with ffmpeg, OCRs via the explicit executa
       first.timestampMs <= 6000,
   );
   assert.equal(
-    result.frames.filter((f) => f.ocrText.includes("20도")).length,
+    result.frames.filter((f) => f.ocrText.includes("20 C")).length,
     1,
     "duplicate frame text suppressed",
   );
@@ -139,7 +139,7 @@ test("visual-only evidence (no transcript, ASR off) is accepted when frames carr
     schemaVersion: 1,
     source: { kind: "local", value: media },
     mode: "briefing",
-    outputLanguage: "ko",
+    outputLanguage: "en",
     formats: ["html"],
     policy: { asr: "off", visual: "local-ocr" },
   });
@@ -158,11 +158,11 @@ test("visual-only evidence (no transcript, ASR off) is accepted when frames carr
     schemaVersion: 1,
     evidenceRef: { id: evidence.id, sha256: "0".repeat(64) },
     mode: "briefing",
-    outputLanguage: "ko",
+    outputLanguage: "en",
     title: "t",
     summary: [
       {
-        text: "화면 텍스트에 따르면 보관 온도는 20도 이하다.",
+        text: "The on-screen text says the storage temperature is at most 20 C.",
         attribution: "source",
         citations: [{ kind: "frame", id: frame.id }],
       },
@@ -177,7 +177,7 @@ test("visual-only evidence (no transcript, ASR off) is accepted when frames carr
             frameId: frame.id,
             alt: "slide",
             caption: {
-              text: "슬라이드",
+              text: "Slide",
               attribution: "source",
               citations: [{ kind: "frame", id: frame.id }],
             },
@@ -241,7 +241,7 @@ test("OCR refuses missing executable, bad language lists and platform sources; n
       value: "https://www.youtube.com/watch?v=jNQXAC9IVRw",
     },
     mode: "briefing",
-    outputLanguage: "ko",
+    outputLanguage: "en",
     formats: ["html"],
     transcriptFile: srt,
     policy: { asr: "off", visual: "local-ocr" },
@@ -457,7 +457,7 @@ test("visual-only outputs carry frame notices, inspected-frame scope and anchors
           sha256: "0".repeat(64),
           width: 320,
           height: 180,
-          ocrText: "규칙 1: 보관 온도 20도 이하",
+          ocrText: "Rule 1: Store at or below 20 C",
         },
         {
           id: "frame-0002",
@@ -466,7 +466,7 @@ test("visual-only outputs carry frame notices, inspected-frame scope and anchors
           sha256: "0".repeat(64),
           width: 320,
           height: 180,
-          ocrText: "규칙 2",
+          ocrText: "Rule 2",
         },
       ];
       d.analysis.reviewedChunkIds = [];
@@ -474,7 +474,7 @@ test("visual-only outputs carry frame notices, inspected-frame scope and anchors
       const cite = (id) => [{ kind: "frame", id }];
       d.report.summary = [
         {
-          text: "카드 1의 규칙.",
+          text: "The rule on card 1.",
           attribution: "source",
           citations: cite("frame-0001"),
         },
@@ -482,14 +482,14 @@ test("visual-only outputs carry frame notices, inspected-frame scope and anchors
       d.report.sections = [
         {
           id: "s",
-          heading: "화면",
+          heading: "Screen",
           blocks: [
             {
               type: "figure",
               frameId: "frame-0001",
-              alt: "카드 1",
+              alt: "Card 1",
               caption: {
-                text: "카드 1",
+                text: "Card 1",
                 attribution: "source",
                 citations: cite("frame-0001"),
               },
@@ -497,7 +497,7 @@ test("visual-only outputs carry frame notices, inspected-frame scope and anchors
             {
               type: "paragraph",
               statement: {
-                text: "카드 2도 있다.",
+                text: "Card 2 is also present.",
                 attribution: "source",
                 citations: cite("frame-0002"),
               },
@@ -510,15 +510,15 @@ test("visual-only outputs carry frame notices, inspected-frame scope and anchors
   });
   const html = htmlDocument(f.bundle);
   assert.ok(
-    !html.includes("원본 전사가 포함됩니다"),
+    !html.includes("This document contains the source transcript."),
     "no transcript privacy notice",
   );
-  assert.ok(html.includes("원본 화면 이미지가 포함됩니다"));
+  assert.ok(html.includes("This document contains source frame images."));
   assert.ok(
-    !html.includes("시간 정보가 없습니다"),
+    !html.includes("Some or all statements lack timestamps."),
     "no timing notice without a transcript",
   );
-  assert.ok(html.includes("확인한 화면 2/2"));
+  assert.ok(html.includes("Inspected frames 2/2"));
   assert.equal(
     (html.match(/id="frame-frame-0002"/g) ?? []).length,
     1,
@@ -529,7 +529,7 @@ test("visual-only outputs carry frame notices, inspected-frame scope and anchors
     1,
     "figure frame is not duplicated",
   );
-  assert.ok(markdownDocument(f.bundle).includes("확인한 화면: 2/2"));
+  assert.ok(markdownDocument(f.bundle).includes("Inspected frames: 2/2"));
   await rm(f.root, { recursive: true, force: true });
 });
 
@@ -538,7 +538,7 @@ test("vision engine: TSV parsing, bottom-region filtering, similarity dedupe and
     "../lib/ingest-worker.mjs"
   );
   const lines = parseVisionLines(
-    "0.50\t0.18\t0.10\t0.64\t0.08\t'주 52시간 근로제' 속도 조절 법안 발의\n1.00\t0.90\t0.89\t0.05\t0.04\tKBS\nbad line\n\t0.1\t0.86\t0.2\t0.05\tblank confidence\n-0.5\t0.1\t0.86\t0.2\t0.05\tnegative\n1.5\t0.1\t0.86\t0.2\t0.05\tout of range\n0.5\t0.1\t0.86\t0.2\t0.05\t자료화면\n",
+    "0.50\t0.18\t0.10\t0.64\t0.08\tBill proposes easing the '52-hour workweek'\n1.00\t0.90\t0.89\t0.05\t0.04\tKBS\nbad line\n\t0.1\t0.86\t0.2\t0.05\tblank confidence\n-0.5\t0.1\t0.86\t0.2\t0.05\tnegative\n1.5\t0.1\t0.86\t0.2\t0.05\tout of range\n0.5\t0.1\t0.86\t0.2\t0.05\tArchive footage\n",
   );
   assert.equal(
     lines.length,
@@ -547,29 +547,29 @@ test("vision engine: TSV parsing, bottom-region filtering, similarity dedupe and
   );
   assert.deepEqual(
     lines.filter((l) => inRegion(l, "bottom")).map((l) => l.text),
-    ["'주 52시간 근로제' 속도 조절 법안 발의"],
+    ["Bill proposes easing the '52-hour workweek'"],
   );
   assert.deepEqual(
     lines.filter((l) => inRegion(l, "top")).map((l) => l.text),
-    ["KBS", "자료화면"],
+    ["KBS", "Archive footage"],
   );
   const recent = [];
-  const f1 = newLines(["KBS NEWS", "첫 번째 자막입니다"], recent);
+  const f1 = newLines(["KBS NEWS", "This is the first caption"], recent);
   recent.push(...f1);
-  const f2 = newLines(["KBS NEWS", "첫 번째 자막입니다"], recent); // same subtitle still on screen + logo
-  const f3 = newLines(["KBS NEWS", "두 번째 자막"], recent);
-  assert.deepEqual(f1, ["KBS NEWS", "첫 번째 자막입니다"]);
+  const f2 = newLines(["KBS NEWS", "This is the first caption"], recent); // same subtitle still on screen + logo
+  const f3 = newLines(["KBS NEWS", "Second caption"], recent);
+  assert.deepEqual(f1, ["KBS NEWS", "This is the first caption"]);
   assert.deepEqual(
     f2,
     [],
     "unchanged subtitle and persistent logo are not re-reported",
   );
-  assert.deepEqual(f3, ["두 번째 자막"], "only the new caption line surfaces");
+  assert.deepEqual(f3, ["Second caption"], "only the new caption line surfaces");
   // End-to-end with a mock vision helper emitting boxes: bottom region keeps the caption, drops the logo.
   const work = path.join(jobs, "vision");
   const helper = await fakeTool(
     path.join(root, "vision-ocr"),
-    `const n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst caption = n===1 ? "첫 번째 자막입니다" : n===2 ? "첫 번째 자막입니다" : "두 번째 자막입니다";\nprocess.stdout.write("1.000\\t0.90\\t0.89\\t0.05\\t0.04\\tKBS\\n0.500\\t0.20\\t0.08\\t0.60\\t0.07\\t"+caption+"\\n");\n`,
+    `const n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst caption = n===1 ? "This is the first caption" : n===2 ? "This is the first caption" : "This is the second caption";\nprocess.stdout.write("1.000\\t0.90\\t0.89\\t0.05\\t0.04\\tKBS\\n0.500\\t0.20\\t0.08\\t0.60\\t0.07\\t"+caption+"\\n");\n`,
   );
   const result = await extractSource(request({ visual: "local-ocr" }), {
     workDir: work,
@@ -581,7 +581,7 @@ test("vision engine: TSV parsing, bottom-region filtering, similarity dedupe and
   });
   assert.deepEqual(
     result.frames.map((f) => f.ocrText),
-    ["첫 번째 자막입니다", "두 번째 자막입니다"],
+    ["This is the first caption", "This is the second caption"],
   );
   assert.equal(result.raw.visualOcr.engine, "vision");
   assert.equal(result.raw.visualOcr.region, "bottom");
@@ -637,14 +637,14 @@ test("dedupe is exact: any changed character inside a line is new evidence; only
   // Round-1 and round-2 review counterexamples: none of these may be treated as repeats.
   for (const [a, b] of [
     [
-      "보관 온도는 20도 이하로 유지해야 합니다.",
-      "보관 온도는 80도 이하로 유지해야 합니다.",
+      "Keep the storage temperature at or below 20 C.",
+      "Keep the storage temperature at or below 80 C.",
     ],
     [
       "This product is safe for pregnant patients.",
       "This product is unsafe for pregnant patients.",
     ],
-    ["승인 전에는 삭제합니다", "승인 전에는 삭제하지 않습니다"],
+    ["Delete before approval", "Do not delete before approval"],
     [
       "The concentration must remain below 1.5 mg.",
       "The concentration must remain below 15 mg.",
@@ -659,25 +659,25 @@ test("dedupe is exact: any changed character inside a line is new evidence; only
       "The dose is eight milligrams per day.",
       "The dose is eighty milligrams per day.",
     ],
-    ["이 문서는 검토 후 폐기합니다.", "이 문서는 검토 후 대기합니다."],
-    ["이 결과는 관리자만 승인합니다.", "이 결과는 관리자도 승인합니다."],
+    ["Discard this document after review.", "Retain this document after review."],
+    ["Only managers approve this result.", "Also managers approve this result."],
     [
       "This is not ready; there is no alarm active.",
       "This is now ready; there is no alarm active.",
     ],
     [
-      "오류 발생 시에 작업을 진행하면 안됩니다.",
-      "오류 발생 시에 작업을 진행하면 됩니다.",
+      "Do not proceed when an error occurs.",
+      "Do proceed when an error occurs.",
     ],
     ["Do not open the box", "Do now open the box"],
     ["abcdefghijklmnop", "abcdefghijklmnoq"],
-    ["자료화면 제공: 연합뉴스", "자료화면 제공; 연합뉴스"],
+    ["Archive footage credit: Example News", "Archive footage credit; Example News"],
     // Round-3 review: edge/quote normalisation also lost evidence.
     [".5 mg daily", "5 mg daily"],
     ["The span is 5'", "The span is 5"],
     ["Use 5·10 mL", "Use 5 10 mL"],
     ["don't proceed", "dont proceed"],
-    ["첫 번째 자막입니다", "첫 번째 자막입니다."],
+    ["This is the first caption", "This is the first caption."],
     ["KBS NEWS 9", "KBS NEWS 9 |"],
   ]) {
     assert.equal(sameCaption(a, b), false, `${a} vs ${b}`);
@@ -685,11 +685,11 @@ test("dedupe is exact: any changed character inside a line is new evidence; only
   }
   // Only whitespace and Unicode normalisation form are cosmetic.
   assert.equal(
-    sameCaption("  첫 번째   자막입니다 ", "첫 번째 자막입니다"),
+    sameCaption("  This is the first   caption ", "This is the first caption"),
     true,
   );
   assert.equal(captionKey("  a   b  "), "a b");
-  assert.equal(captionKey("한글".normalize("NFD")), "한글", "NFC-normalised");
+  assert.equal(captionKey("café".normalize("NFD")), "café", "NFC-normalised");
   assert.deepEqual(
     newLines(["NO", "20%", "x"], []),
     ["NO", "20%"],
@@ -714,7 +714,7 @@ test("duplicate-PTS scene source (round-2 fixture): one image per metadata recor
     schemaVersion: 1,
     source: { kind: "local", value: fixture },
     mode: "briefing",
-    outputLanguage: "ko",
+    outputLanguage: "en",
     formats: ["html"],
     transcriptFile: srt,
     policy: { asr: "off", visual: "local-ocr" },
@@ -772,11 +772,11 @@ test("duplicate-PTS scene source (round-2 fixture): one image per metadata recor
 });
 
 test("interval sampling keeps real source timestamps, survives quoted and Unicode work directories, and a caption returning after the window is reported again", async () => {
-  const work = path.join(jobs, process.platform === "win32" ? "it's 한글 odd" : "it's: 한글 odd");
+  const work = path.join(jobs, process.platform === "win32" ? "it's café odd" : "it's: café odd");
   // Mock vision: caption A on frames 1–2, nothing on 3–11, caption A again on frame 12.
   const helper = await fakeTool(
     path.join(root, "vision-window"),
-    `const n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst show = n<=2 || n>=12;\nif (show) process.stdout.write("0.900\\t0.20\\t0.08\\t0.60\\t0.07\\t반복 표시되는 자막입니다\\n");\n`,
+    `const n=Number(/frame-(\\d+)/.exec(process.argv[2])?.[1]??0);\nconst show = n<=2 || n>=12;\nif (show) process.stdout.write("0.900\\t0.20\\t0.08\\t0.60\\t0.07\\tThis caption appears repeatedly\\n");\n`,
   );
   // 6-second clip at 1 s sampling yields frames at real PTS 0, 1, 2, ... (select, not fps resampling).
   const result = await extractSource(request({ visual: "local-ocr" }), {
@@ -823,7 +823,7 @@ test("interval sampling keeps real source timestamps, survives quoted and Unicod
       schemaVersion: 1,
       source: { kind: "local", value: longMedia },
       mode: "briefing",
-      outputLanguage: "ko",
+      outputLanguage: "en",
       formats: ["html"],
       transcriptFile: srt,
       policy: { asr: "off", visual: "local-ocr" },
@@ -912,7 +912,7 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
       value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     },
     mode: "briefing",
-    outputLanguage: "ko",
+    outputLanguage: "en",
     formats: ["html"],
     transcriptFile: srt,
     policy: { asr: "off", visual: "frames" },
@@ -990,7 +990,7 @@ test("long videos: the default interval widens to fit the cap and reach the end;
       schemaVersion: 1,
       source: { kind: "local", value },
       mode: "briefing",
-      outputLanguage: "ko",
+      outputLanguage: "en",
       formats: ["html"],
       transcriptFile: srt,
       policy: { asr: "off", visual: "frames" },
@@ -1063,7 +1063,7 @@ test("round 5: coverage is honest (unknown duration + cap, short explicit pass),
       schemaVersion: 1,
       source: { kind: "local", value },
       mode: "briefing",
-      outputLanguage: "ko",
+      outputLanguage: "en",
       formats: ["html"],
       transcriptFile: srt,
       policy: { asr: "off", visual: "frames", ...policy },
@@ -1154,7 +1154,7 @@ test("round 5: coverage is honest (unknown duration + cap, short explicit pass),
       schemaVersion: 1,
       source: { kind: "local", value: media },
       mode: "briefing",
-      outputLanguage: "ko",
+      outputLanguage: "en",
       formats: ["html"],
       policy: { asr: "off", visual: "frames" },
     }),
@@ -1214,7 +1214,7 @@ test("round 5: a YouTube 'video' download that also carries audio, or is above 4
       value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     },
     mode: "briefing",
-    outputLanguage: "ko",
+    outputLanguage: "en",
     formats: ["html"],
     transcriptFile: srt,
     policy: { asr: "off", visual: "frames" },
@@ -1262,7 +1262,7 @@ test("look-alike runs: near-identical and build-up runs are marked in the index;
       schemaVersion: 1,
       source: { kind: "local", value: clip },
       mode: "briefing",
-      outputLanguage: "ko",
+      outputLanguage: "en",
       formats: ["html"],
       transcriptFile: srt,
       policy: { asr: "off", visual: "frames" },
@@ -1351,7 +1351,7 @@ test("a capped scene-only pass is never reported as complete (no sampling step b
       schemaVersion: 1,
       source: { kind: "local", value: clip },
       mode: "briefing",
-      outputLanguage: "ko",
+      outputLanguage: "en",
       formats: ["html"],
       transcriptFile: srt,
       policy: { asr: "off", visual: "frames" },

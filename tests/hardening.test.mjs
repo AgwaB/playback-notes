@@ -25,7 +25,7 @@ function longData() {
     text:
       i === 9999
         ? "LONG_SOURCE_FINAL_SENTINEL"
-        : `Line ${i}: ${"bounded 한글 🙂 ".repeat(24)}`,
+        : `Line ${i}: ${"bounded café 🙂 ".repeat(24)}`,
     speaker: null,
   }));
   d.evidence.chunks = makeChunks(d.evidence.segments);

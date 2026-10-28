@@ -33,10 +33,10 @@ test("Windows producer success without an output connection fails before the job
 test("fast successful writers drain every byte without a false missing-output failure", async (t) => {
   const { base, options } = await setup(t);
   for (const count of [1, 1024, 32768, 1, 32768]) {
-    const expected = "한영 output\n".repeat(count);
+    const expected = "ok🙂 output\n".repeat(count);
     const raw = await readAsrOutput(base, options, (output, signal) =>
       runLocalTool(process.execPath, ["-e",
-        "require('node:fs').writeFileSync(process.argv[1], '한영 output\\n'.repeat(Number(process.argv[2])))",
+        "require('node:fs').writeFileSync(process.argv[1], 'ok🙂 output\\n'.repeat(Number(process.argv[2])))",
         `${output}.srt`, String(count)], { ...options, signal }));
     assert.equal(raw, expected);
   }

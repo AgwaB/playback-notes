@@ -45,7 +45,7 @@ test("report must bind actual evidence bytes and requested mode/language", () =>
     d.report.evidenceRef.sha256 = "f".repeat(64);
   }, "EVIDENCE_MISMATCH");
   rejected((d) => {
-    d.report.outputLanguage = "en";
+    d.report.outputLanguage = "fr";
   }, "INVALID_CONTRACT");
   rejected((d) => {
     d.analysis.evidenceId = "ev-other";

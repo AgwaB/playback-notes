@@ -35,7 +35,7 @@ test("short source phrases stay grouped without turning report text into markup"
   assert.ok(paragraph.textContent.startsWith(text));
   assert.ok(markdownDocument(f.bundle).includes("Python Package Index"));
   assert.ok(!markdownDocument(f.bundle).includes("source-phrase"));
-  const boundary = `"${"a".repeat(48)}" "${"b".repeat(49)}" Don't alter 'short source' or 'third phrase' and '한글 이름'.`;
+  const boundary = `"${"a".repeat(48)}" "${"b".repeat(49)}" Don't alter 'short source' or 'third phrase' and 'café name'.`;
   f.bundle.report.sections[0].blocks[0].statement.text = boundary;
   const edge = new JSDOM(htmlDocument(f.bundle)).window.document.querySelector("#section-principles > p");
   const grouped = [...edge.querySelectorAll(".source-phrase")].map((span) => span.textContent);
@@ -50,8 +50,8 @@ test("print notice reflects the hidden full transcript while HTML retains its pu
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const html = new JSDOM(htmlDocument(f.bundle)).window.document;
   const print = new JSDOM(htmlDocument(f.bundle, [], [], { print: true })).window.document;
-  assert.ok(html.querySelector("#limitations").textContent.includes("원본 전사가 포함됩니다"));
-  assert.ok(print.querySelector("#limitations").textContent.includes("전체 자막은 이 문서에 포함하지 않았습니다"));
+  assert.ok(html.querySelector("#limitations").textContent.includes("This document contains the source transcript."));
+  assert.ok(print.querySelector("#limitations").textContent.includes("The full transcript is not included in this document; see the source."));
   assert.equal(html.querySelector("#transcript p").textContent.includes(f.data.evidence.segments[0].text), true);
 });
 
@@ -93,13 +93,13 @@ test("printed frame heading follows its first frame and provenance follows Sourc
     await page.pdf({ path: pdf, format: "A4", preferCSSPageSize: true, printBackground: true });
     const { stdout: boxes } = await execute(pdfText, ["-enc", "UTF-8", "-bbox-layout", pdf, "-"], { maxBuffer: 8 * 1024 * 1024, windowsHide: true });
     const pages = pdfPages(boxes);
-    const headingPage = pages.findIndex((words) => words.join(" ").includes("인용한 화면"));
+    const headingPage = pages.findIndex((words) => words.join(" ").includes("Cited frames"));
     const headingWords = pages[headingPage];
-    const headingIndex = headingWords.indexOf("인용한");
+    const headingIndex = headingWords.indexOf("Cited");
     assert.ok(headingWords.slice(headingIndex + 2).includes("00:00"), `frame heading stranded at ${height}mm: page ${headingPage + 1}`);
     const provenance = pages.findIndex((words) => words.join("").includes(f.data.reportSha256));
     assert.ok(provenance >= 0, "the report identity must remain in the printed document details");
-    assert.ok(pages[provenance].includes("출처"), `provenance-only page at ${height}mm: page ${provenance + 1}`);
+    assert.ok(pages[provenance].includes("Sources"), `provenance-only page at ${height}mm: page ${provenance + 1}`);
     for (let index = 0; index < 8; index++)
       assert.equal(pages.flat().filter((word) => word === `00:0${index}`).length, index === 0 ? 4 : 2, `lost frame ${index} or its citation`);
     const joined = pages.flat().join("");

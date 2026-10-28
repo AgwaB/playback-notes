@@ -71,4 +71,4 @@ DOM import creates an immutable partial evidence snapshot, returns `needs-input`
 
 ## Borrowed design and validation
 
-The design follows OpenCLI's actual-response capture, exact current-video binding and malformed-result checks, while retaining our stronger unknown-time and partial-evidence rules. No OpenCLI runtime, cookie strategy, fetch/XHR monkey-patching, grouping heuristics or source code was bundled. See [comparison](../docs/research/reference-gap-analysis-v7.md) and [implementation verification](../docs/youtube-capture-v8.md).
+The design follows OpenCLI's actual-response capture, exact current-video binding and malformed-result checks, while retaining our stronger unknown-time and partial-evidence rules. No OpenCLI runtime, cookie strategy, fetch/XHR monkey-patching, grouping heuristics or source code was bundled.

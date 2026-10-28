@@ -11,11 +11,11 @@ import { promisify } from "node:util";
 test("Windows ASR passes ASCII relative model and audio names to narrow-argv tools", {
   skip: process.platform !== "win32",
 }, async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "asr 한글 모델-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "asr café model-"));
   try {
-    const media = path.join(root, "음성 sample.wav");
-    const model = path.join(root, "모델 한글.bin");
-    const workDir = path.join(root, "작업");
+    const media = path.join(root, "speech café sample.wav");
+    const model = path.join(root, "model café.bin");
+    const workDir = path.join(root, "work résumé");
     await mkdir(workDir);
     await writeFile(model, "existing model bytes");
     await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error",
@@ -30,7 +30,7 @@ const audio = args.at(-1);
 if (/[^\\x00-\\x7f]/.test(model + audio) || path.isAbsolute(model) || path.isAbsolute(audio)) process.exit(10);
 if (fs.readFileSync(model, 'utf8') !== 'existing model bytes') process.exit(11);
 if (fs.readFileSync(audio).subarray(0, 4).toString() !== 'RIFF') process.exit(12);
-fs.writeFileSync(args[args.indexOf('--output-file') + 1] + '.srt', '1\\n00:00:00,000 --> 00:00:00,200\\n모델과 음성 경로 확인.\\n');
+fs.writeFileSync(args[args.indexOf('--output-file') + 1] + '.srt', '1\\n00:00:00,000 --> 00:00:00,200\\nModel and audio paths verified. 🙂\\n');
 `);
     const result = await extractSource({
       source: { kind: "local", value: media },
@@ -38,7 +38,7 @@ fs.writeFileSync(args[args.indexOf('--output-file') + 1] + '.srt', '1\\n00:00:00
       policy: { asr: "local", maxDownloadBytes: 1024 * 1024,
         extractTimeoutMs: 10000, asrTimeoutMs: 10000 },
     }, { workDir, localAsrExecutable: executable, localAsrModel: model });
-    assert.equal(result.segments[0].text, "모델과 음성 경로 확인.");
+    assert.equal(result.segments[0].text, "Model and audio paths verified. 🙂");
     assert.equal(await readFile(model, "utf8"), "existing model bytes");
   } finally {
     await rm(root, { recursive: true, force: true });
