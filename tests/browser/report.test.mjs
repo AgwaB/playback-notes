@@ -97,9 +97,9 @@ test("real native seek, untimed transcript, English PDF, Markdown, images, retry
       "-f",
       "lavfi",
       "-i",
-      // Same size, rate and keyframe spacing as the hardening fixtures: this test's
-      // earlier 640x360, 25 fps, single-keyframe file intermittently stalled the
-      // page after its first seek on hosted macOS runners, which those never did.
+      // Same small encoding as the hardening fixtures (1 s keyframes). Hosted macOS
+      // runners intermittently stop responding in Chrome during browser tests; that
+      // is not specific to this file, and this encoding does not prevent it.
       "color=c=0x21454a:s=160x90:r=10:d=6",
       "-c:v",
       "libx264",
