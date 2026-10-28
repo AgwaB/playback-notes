@@ -89,3 +89,5 @@ What was decided in this meeting recording? <path-to-audio>
 ```
 
 If you don't name the formats, the agent asks which you want: HTML, Markdown, PDF or any combination. Otherwise it asks only for missing information or approval for optional local tools.
+
+Afterwards, keep asking about the source (“What exactly did they say about X?”). The agent answers from the same transcript and cites the moments it relies on.
