@@ -74,7 +74,7 @@ On Windows, follow the [PowerShell setup](references/windows.md); on WSL, the [W
 
 ### 2. Ask your agent
 
-Give it a YouTube link, a local audio or video file (MP3, M4A, WAV, FLAC, MP4, MOV, MKV and more), a direct link to such a file, or a transcript (SRT, VTT, TXT). Choose how deep the report goes:
+Give it a YouTube link, an Apple Podcasts episode link, a local audio or video file (MP3, M4A, WAV, FLAC, MP4, MOV, MKV and more), a direct link to such a file, or a transcript (SRT, VTT, TXT). A podcast transcript published in the show's feed is used directly; otherwise audio is transcribed locally once you approve it. Choose how deep the report goes:
 
 | Mode | What you get | Ask with words like | For the 1-hour example |
 | --- | --- | --- | --- |
@@ -86,6 +86,7 @@ Give me a briefing on this video: <video-url>
 Create a deep-dive on this lecture, in Spanish, and make a PDF too: <video-url>
 Summarize this local video using the SRT file I supplied: <path>
 What was decided in this meeting recording? <path-to-audio>
+Give me a briefing on this episode: <apple-podcasts-episode-link>
 ```
 
 If you don't name the formats, the agent asks which you want: HTML, Markdown, PDF or any combination. Otherwise it asks only for missing information or approval for optional local tools.
