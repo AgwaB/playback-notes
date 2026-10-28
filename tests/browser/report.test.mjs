@@ -195,6 +195,10 @@ test("real native seek, untimed transcript, English PDF, Markdown, images, retry
     executablePath,
     headless: true,
     chromiumSandbox: true,
+    // On hosted macOS runners the page intermittently stopped responding right
+    // after the first native seek of this 640×360 H.264 file (renderer evaluations
+    // timed out). Software decoding still exercises real decoded seeks.
+    args: ["--disable-accelerated-video-decode"],
   });
   const diagnostics = browserDiagnostics(t, browser);
   t.after(async () => {

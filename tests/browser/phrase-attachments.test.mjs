@@ -211,16 +211,25 @@ test("Chrome keeps source suffixes, numbers, heading attributions and limitation
           const paragraph = paragraphs[index],
             spacer = document.createElement("span");
           paragraph.querySelector(".boundary-spacer")?.remove();
-          const probe = document.createElement("span");
-          probe.textContent = base;
-          probe.style.cssText = "position:absolute;white-space:nowrap";
-          paragraph.append(probe);
-          const baseWidth = probe.getBoundingClientRect().width;
-          probe.remove();
+          const width = (text) => {
+            const probe = document.createElement("span");
+            probe.textContent = text;
+            probe.style.cssText = "position:absolute;white-space:nowrap";
+            paragraph.append(probe);
+            const measured = probe.getBoundingClientRect().width;
+            probe.remove();
+            return measured;
+          };
+          const baseWidth = width(base);
           spacer.className = "boundary-spacer";
           spacer.setAttribute("aria-hidden", "true");
           spacer.style.cssText = `display:inline-block;width:${Math.max(0, paragraph.clientWidth - baseWidth - 1)}px`;
           paragraph.prepend(spacer);
+          // A token wider than the line must wrap inside itself; its attached
+          // ending (last word plus suffix) must still stay together. Font
+          // metrics decide this, so it differs between platforms.
+          if (width(target) > paragraph.clientWidth)
+            return { ...measure(paragraph, target.split(/\s/u).at(-1)), wrapped: target };
           return measure(paragraph, target);
         });
         observations.push(measure(paragraphs.at(-1), "progress”note"));
