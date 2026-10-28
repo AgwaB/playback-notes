@@ -97,9 +97,14 @@ test("real native seek, untimed transcript, English PDF, Markdown, images, retry
       "-f",
       "lavfi",
       "-i",
-      "color=c=0x21454a:s=640x360:d=6",
+      // Same size, rate and keyframe spacing as the hardening fixtures: this test's
+      // earlier 640x360, 25 fps, single-keyframe file intermittently stalled the
+      // page after its first seek on hosted macOS runners, which those never did.
+      "color=c=0x21454a:s=160x90:r=10:d=6",
       "-c:v",
       "libx264",
+      "-g",
+      "10",
       "-pix_fmt",
       "yuv420p",
       "-movflags",
@@ -133,8 +138,8 @@ test("real native seek, untimed transcript, English PDF, Markdown, images, retry
       timestampMs: 1000,
       assetPath: "assets/frame-1.png",
       sha256: await fileHash(image),
-      width: 640,
-      height: 360,
+      width: 160,
+      height: 90,
     },
   ];
   f.data.analysis.inspectedFrameIds = ["frame-1"];
@@ -195,10 +200,6 @@ test("real native seek, untimed transcript, English PDF, Markdown, images, retry
     executablePath,
     headless: true,
     chromiumSandbox: true,
-    // On hosted macOS runners the page intermittently stopped responding right
-    // after the first native seek of this 640×360 H.264 file (renderer evaluations
-    // timed out). Software decoding still exercises real decoded seeks.
-    args: ["--disable-accelerated-video-decode"],
   });
   const diagnostics = browserDiagnostics(t, browser);
   t.after(async () => {

@@ -97,6 +97,9 @@ jobs:
           node --input-type=module -e "import { accessSync, constants, lstatSync } from 'node:fs'; import { execFileSync } from 'node:child_process'; const browser = process.env.TEST_BROWSER_EXECUTABLE; if (!lstatSync(browser).isFile()) throw new Error('Browser must be a regular file; resolve symlinks first.'); accessSync(browser, constants.X_OK); for (const tool of ['pdftotext', 'pdfinfo']) execFileSync(tool, ['-v'], { stdio: 'inherit' });"
       - name: Browser and PDF regression tests
         if: matrix.node == '26'
+        # The suite takes about three minutes. A wedged browser should fail this
+        # step with its diagnostics, not run into the job limit and be cancelled.
+        timeout-minutes: 12
         env:
           TEST_BROWSER_ARTIFACTS: ${{ runner.temp }}/video-browser-debug
         # Browser instances are memory/CPU intensive; keep all tests while
