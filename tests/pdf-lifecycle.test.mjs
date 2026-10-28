@@ -51,6 +51,7 @@ for (const scenario of [
         launches++;
         assert.equal(profile, path.join(home, "profile"));
         assert.equal(options.chromiumSandbox, true);
+        assert.deepEqual(options.args, ["--disable-gpu"]);
         assert.equal(options.env.HOME, home);
         return {
           route: async () => {},

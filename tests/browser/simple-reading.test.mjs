@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { mkdir, rm } from "node:fs/promises";
 import { chromium } from "playwright-core";
+import { browserArgs } from "./launch-args.mjs";
 import { fixture } from "../helpers.mjs";
 import { htmlDocument } from "../../lib/rendering.mjs";
 
@@ -29,7 +30,7 @@ async function readingFixture(t) {
 
 test("mobile reader starts with closed contents and compact, touch-sized citations that remain keyboard accessible", browserTest, async (t) => {
   const f = await readingFixture(t);
-  const browser = await chromium.launch({ executablePath, headless: true });
+  const browser = await chromium.launch({ executablePath, headless: true, args: browserArgs() });
   t.after(() => browser.close());
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await page.route("https://www.youtube.com/**", (route) => route.abort());
@@ -77,7 +78,7 @@ test("mobile reader starts with closed contents and compact, touch-sized citatio
 
 test("without JavaScript all exact citations and native document details remain usable", browserTest, async (t) => {
   const f = await readingFixture(t);
-  const browser = await chromium.launch({ executablePath, headless: true });
+  const browser = await chromium.launch({ executablePath, headless: true, args: browserArgs() });
   t.after(() => browser.close());
   const page = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
   await page.setContent(htmlDocument(f.bundle));

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
+import { browserArgs } from "./launch-args.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { writeFile, readFile, rm, stat } from "node:fs/promises";
@@ -133,6 +134,7 @@ async function nativeFixture(t, { codec = false, absent = false, audio = false }
   await render(f.args);
   running = await startServer({ root: f.out });
   browser = await chromium.launch({
+    args: browserArgs(),
     executablePath,
     headless: true,
     chromiumSandbox: true,
@@ -499,6 +501,7 @@ test(
     const running = await startServer({ root: f.out });
     t.after(() => running.close());
     const browser = await chromium.launch({
+      args: browserArgs(),
       executablePath,
       headless: true,
       chromiumSandbox: true,

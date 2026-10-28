@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 import { chromium } from "playwright-core";
+import { browserArgs } from "./launch-args.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -73,7 +74,7 @@ test("printed frame heading follows its first frame and provenance follows Sourc
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const scratch = await mkdtemp(path.join(os.tmpdir(), "video-print-pagination-"));
   t.after(() => rm(scratch, { recursive: true, force: true }));
-  const browser = await chromium.launch({ executablePath, headless: true, chromiumSandbox: true });
+  const browser = await chromium.launch({ executablePath, headless: true, chromiumSandbox: true, args: browserArgs() });
   t.after(() => browser.close());
   const page = await browser.newPage();
   const html = htmlDocument(f.bundle, [], [], { print: true });
@@ -122,7 +123,7 @@ test("a paragraph shorter than a page does not strand its ending beside citation
     } }];
   } });
   t.after(() => rm(f.root, { recursive: true, force: true }));
-  const browser = await chromium.launch({ executablePath, headless: true, chromiumSandbox: true });
+  const browser = await chromium.launch({ executablePath, headless: true, chromiumSandbox: true, args: browserArgs() });
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.setContent(htmlDocument(f.bundle, [], [], { print: true }));
@@ -156,7 +157,7 @@ test("the final two analysis limitations stay together with source notes", {
     ];
   } });
   t.after(() => rm(f.root, { recursive: true, force: true }));
-  const browser = await chromium.launch({ executablePath, headless: true });
+  const browser = await chromium.launch({ executablePath, headless: true, args: browserArgs() });
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.setContent(htmlDocument(f.bundle, [], [], { print: true }));

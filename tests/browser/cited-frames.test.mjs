@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { chromium } from "playwright-core";
+import { browserArgs } from "./launch-args.mjs";
 import { fixture } from "../helpers.mjs";
 import { htmlDocument } from "../../lib/rendering.mjs";
 
@@ -18,7 +19,7 @@ const cases = [
 test("gallery timestamps use the same source controls as body citations", {
   skip: !executablePath, timeout: 60000,
 }, async (t) => {
-  const browser = await chromium.launch({ executablePath, headless: true });
+  const browser = await chromium.launch({ executablePath, headless: true, args: browserArgs() });
   t.after(() => browser.close());
   for (const scenario of cases) await t.test(scenario.name, async (t) => {
     const f = await fixture({ mutate(data) {

@@ -102,6 +102,11 @@ jobs:
         timeout-minutes: 12
         env:
           TEST_BROWSER_ARTIFACTS: ${{ runner.temp }}/video-browser-debug
+          # Hosted macOS runners are VMs whose paravirtual GPU faults under Chrome's
+          # Metal work until the kernel ignores Chrome's GPU process and pages freeze
+          # (kernel log: "Deny submissions/ignore app[Google Chrome He]"). Other runners
+          # and local runs keep the GPU path.
+          TEST_BROWSER_ARGS: ${{ runner.os == 'macOS' && '--disable-gpu' || '' }}
         # Browser instances are memory/CPU intensive; keep all tests while
         # avoiding oversubscription on hosted runners. No retries hide failures.
         run: node --test --test-concurrency=2 tests/browser/*.test.mjs

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
+import { browserArgs } from "./launch-args.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
@@ -197,6 +198,7 @@ test("real native seek, untimed transcript, English PDF, Markdown, images, retry
   );
   assert.match(info, /Pages:\s+[1-9]/);
   const browser = await chromium.launch({
+    args: browserArgs(),
     executablePath,
     headless: true,
     chromiumSandbox: true,
@@ -329,6 +331,7 @@ test("YouTube failure preserves transcript and external timestamp fallback", {
   );
   assert.ok(links.includes("youtube.com/watch?v=jNQXAC9IVRw&t=2s"));
   const browser = await chromium.launch({
+    args: browserArgs(),
     executablePath,
     headless: true,
     chromiumSandbox: true,

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
 import { chromium } from "playwright-core";
+import { browserArgs } from "./launch-args.mjs";
 import { fixture } from "../helpers.mjs";
 import { htmlDocument } from "../../lib/rendering.mjs";
 import { markdownDocument } from "../../lib/markdown.mjs";
@@ -81,7 +82,7 @@ async function reportPage(t) {
     },
   });
   t.after(() => rm(f.root, { recursive: true, force: true }));
-  const browser = await chromium.launch({ executablePath, headless: true });
+  const browser = await chromium.launch({ executablePath, headless: true, args: browserArgs() });
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.setContent(htmlDocument(f.bundle));
@@ -324,7 +325,7 @@ test(
     });
     t.after(() => rm(f.root, { recursive: true, force: true }));
     const markdown = markdownDocument(f.bundle);
-    const browser = await chromium.launch({ executablePath, headless: true });
+    const browser = await chromium.launch({ executablePath, headless: true, args: browserArgs() });
     t.after(() => browser.close());
     const page = await browser.newPage();
     await page.setContent(htmlDocument(f.bundle));

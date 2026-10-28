@@ -4,6 +4,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { JSDOM } from "jsdom";
 import { chromium } from "playwright-core";
+import { browserArgs } from "./launch-args.mjs";
 import { fixture } from "../helpers.mjs";
 import { phraseHtml } from "../../lib/phrases.mjs";
 import { htmlDocument } from "../../lib/rendering.mjs";
@@ -104,7 +105,7 @@ test("Chrome avoids leading middle-dot separators and detached timestamp/age uni
   });
   t.after(() => rm(f.root, { recursive: true, force: true }));
   const markdown = markdownDocument(f.bundle);
-  const browser = await chromium.launch({ executablePath, headless: true });
+  const browser = await chromium.launch({ executablePath, headless: true, args: browserArgs() });
   t.after(() => browser.close());
   const page = await browser.newPage();
   await page.setViewportSize({ width: 375, height: 900 });
