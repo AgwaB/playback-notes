@@ -750,6 +750,9 @@ test("guarded fetch pins every public DNS response and manually rechecks redirec
       assert.equal(readDnsPinnedAddresses(init)[0].address, "8.8.8.8");
       assert.equal(new Headers(init.headers).has("cookie"), false);
       assert.equal(new Headers(init.headers).has("authorization"), false);
+      // Fixed, as youtube-transcript-api sends it: the requester's region does not
+      // decide the order or language of YouTube's caption list.
+      assert.equal(new Headers(init.headers).get("accept-language"), "en-US");
       return calls.length === 1
         ? new Response(null, {
             status: 302,
