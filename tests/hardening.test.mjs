@@ -11,6 +11,8 @@ import {
   stat,
   utimes,
 } from "node:fs/promises";
+import fsp from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fixture, sampleData } from "./helpers.mjs";
@@ -234,6 +236,35 @@ test("a lock its writer stopped refreshing is taken over; a fresh one and anothe
     { code: "LOCK_COMPROMISED" },
   );
   assert.equal(await readFile(lock, "utf8"), "another writer");
+});
+
+test("a stale lock another writer moves on from this writer's aside name is not an error", async (t) => {
+  // Windows renames through an open handle: a second writer that opened the stale lock
+  // before the first writer's rename moves the file on from the first writer's name.
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const lock = path.join(f.out, ".write.lock");
+  await writeFile(lock, "");
+  const old = new Date(Date.now() - 60_000);
+  await utimes(lock, old, old);
+  const original = fsp.rename;
+  const mocked = t.mock.method(fsp, "rename", async (from, to) => {
+    await original(from, to);
+    if (String(from) === lock)
+      await original(to, path.join(f.out, ".write.lock.other-writer"));
+  });
+  syncBuiltinESMExports();
+  t.after(() => {
+    mocked.mock.restore();
+    syncBuiltinESMExports();
+  });
+  let entered = false;
+  const result = await withLock(f.out, async () => {
+    entered = true;
+    return { issues: [] };
+  });
+  assert.ok(entered);
+  assert.deepEqual(result.issues, [], "the other writer, not this one, recovered the stale lock");
 });
 
 test("two writers taking over the same stale lock never both enter", async (t) => {
