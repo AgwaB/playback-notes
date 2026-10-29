@@ -22,11 +22,11 @@
 
 Andrej Karpathy's [“[1hr Talk] Intro to Large Language Models”](https://www.youtube.com/watch?v=zjkBMFhNj_g), summarized both ways with this skill:
 
-![One video becomes two reports: a briefing with 4 key points and 6 sections, and a deep-dive with 5 key points and 18 sections. Every claim links to its timestamp, and each report can be saved as HTML, Markdown or PDF.](references/assets/example-output.png)
+![Animation: the one-hour YouTube talk fast-forwards through its chapters while its 1,704 caption lines are read; a briefing (4 key points, 6 sections) is written in a moment and a deep-dive (5 key points, 18 sections) at length; clicking the timestamp 01:32 in the briefing opens the video at that moment; each report can be saved as HTML, Markdown or PDF.](references/assets/example-output.webp)
 
 <p align="center">Read the full reports: <a href="examples/karpathy-intro-llms/briefing.md"><strong>Briefing</strong></a> · <a href="examples/karpathy-intro-llms/deep-dive.md"><strong>Deep-dive</strong></a> (Markdown; each timestamp opens the video at that moment)</p>
 
-<p align="center"><sub>Unofficial summary, not affiliated with or endorsed by the creator. Written from the video's automatic captions; the transcript is not included.</sub></p>
+<p align="center"><sub>Unofficial summary, not affiliated with or endorsed by the creator. Written from the video's automatic captions; the transcript is not included. Video thumbnail © Andrej Karpathy.</sub></p>
 
 ## How it works
 
