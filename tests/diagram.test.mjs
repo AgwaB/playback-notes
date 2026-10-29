@@ -315,7 +315,7 @@ test("long labels wrap/ellipsize inside boxes, row-skipping edges use the side l
 
 test("a node label or sublabel the renderer would cut with an ellipsis fails validation (real host case: 6-node row)", async () => {
   const { diagramTruncations } = await import("../lib/diagram.mjs");
-  // Translated shape from a Claude Code run on Karpathy's "Intro to LLMs": one kernel node fanning out
+  // Shape of a diagram written for Karpathy's "Intro to LLMs": one kernel node fanning out
   // to six nodes in one row; three sublabels were silently cut in the PDF.
   const block = {
     type: "diagram",

@@ -407,7 +407,7 @@ test("the original language (default audio track) beats a translation listed fir
     }),
     null,
   );
-  // Review round 5: a dubbed default must not be taken for the original. The player marks
+  // A dubbed default must not be taken for the original. The player marks
   // the original in the display name, as yt-dlp reads it.
   const dubbed = {
     streamingData: {
@@ -857,7 +857,7 @@ test("hostile worker output never crashes the parent: garbage, giant lines, cont
         "SOURCE_ACCESS_DENIED",
       ],
       silentExit: [`process.exit(0)`, "SOURCE_ACCESS_DENIED"],
-      // Round-3: valid JSON whose fields throw on string conversion must not escape the handler.
+      // Valid JSON whose fields throw on string conversion must not escape the handler.
       coercingCode: [
         `process.stdout.write(JSON.stringify({ type: "result", ok: false, code: { toString: null } }) + "\\n", () => process.exit(1))`,
         "SOURCE_ACCESS_DENIED",

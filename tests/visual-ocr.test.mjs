@@ -641,7 +641,7 @@ test("dedupe is exact: any changed character inside a line is new evidence; only
   const { sameCaption, newLines, captionKey } = await import(
     "../lib/ingest-worker.mjs"
   );
-  // Round-1 and round-2 review counterexamples: none of these may be treated as repeats.
+  // Counterexamples: none of these may be treated as repeats.
   for (const [a, b] of [
     [
       "Keep the storage temperature at or below 20 C.",
@@ -679,7 +679,7 @@ test("dedupe is exact: any changed character inside a line is new evidence; only
     ["Do not open the box", "Do now open the box"],
     ["abcdefghijklmnop", "abcdefghijklmnoq"],
     ["Archive footage credit: Example News", "Archive footage credit; Example News"],
-    // Round-3 review: edge/quote normalisation also lost evidence.
+    // Edge/quote normalisation must not lose evidence either.
     [".5 mg daily", "5 mg daily"],
     ["The span is 5'", "The span is 5"],
     ["Use 5·10 mL", "Use 5 10 mL"],
@@ -704,9 +704,9 @@ test("dedupe is exact: any changed character inside a line is new evidence; only
   );
 });
 
-test("duplicate-PTS scene source (round-2 fixture): one image per metadata record, every image bound to its own source time", async () => {
+test("duplicate-PTS scene source: one image per metadata record, every image bound to its own source time", async () => {
   // 12 gray frames (values 0,255,32,200,80,160,8,240,100,180,0,255) at 2 fps with floor(N/3)
-  // PTS: four PTS values, three distinct images each. Built by the round-2 reviewer.
+  // PTS: four PTS values, three distinct images each.
   const fixture = path.join(root, "dup.mkv");
   await copyFile(
     new URL("./fixtures/scene-duplicates.mkv", import.meta.url),
