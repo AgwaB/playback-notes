@@ -210,6 +210,19 @@ test("Podcasting 2.0 HTML transcripts: <cite> names the speaker of the following
     { startMs: null, endMs: null, text: "You're triggering Tom.", speaker: "Alban" },
     { startMs: null, endMs: null, text: "Second paragraph.", speaker: "Alban" },
   ]);
+  // A cite that opens a paragraph names that paragraph's speaker; a cite inside the text
+  // is an ordinary citation of a work.
+  assert.deepEqual(
+    htmlTranscriptSegments(
+      "<p><cite>Alice:</cite> Hello.</p><p><cite>Bob:</cite> Hi.</p><p>Still Bob.</p><p><cite>Ann:</cite></p><p>As <cite>The Book</cite> says.</p>",
+    ).map((s) => [s.speaker, s.text]),
+    [
+      ["Alice", "Hello."],
+      ["Bob", "Hi."],
+      ["Bob", "Still Bob."],
+      ["Ann", "As The Book says."],
+    ],
+  );
   assert.deepEqual(
     htmlTranscriptSegments("<body>Plain text only.\n\nSecond block.</body>").map((s) => [s.speaker, s.text]),
     [
@@ -239,6 +252,16 @@ test("an unreadable feed or transcript leaves the episode audio to local ASR, wi
   );
   assert.equal(broken.segments, null);
   assert.deepEqual(broken.warnings.map((w) => w.code), ["PODCAST_TRANSCRIPT_UNUSABLE"]);
+  // An HTML transcript with no text is just as unusable: it must not stop the audio fallback.
+  const htmlFeed = feed.replace('https://feeds.example.org/ep7.vtt" type="text/vtt"', 'https://feeds.example.org/ep7.html" type="text/html"');
+  const blank = await publishedPodcastTranscript(
+    fakeNetwork({ [episode.feedUrl]: htmlFeed, "https://feeds.example.org/ep7.html": "<p> </p>" }),
+    episode,
+    policy,
+  );
+  assert.equal(blank.segments, null);
+  assert.equal(blank.chosen, null);
+  assert.deepEqual(blank.warnings.map((w) => w.code), ["PODCAST_TRANSCRIPT_UNUSABLE"]);
   const good = await publishedPodcastTranscript(
     fakeNetwork({
       [episode.feedUrl]: feed,

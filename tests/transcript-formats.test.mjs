@@ -170,6 +170,39 @@ test("podcast transcripts carry the speaker until it changes (Podcasting 2.0 VTT
   );
 });
 
+test("podcast speakers: labels and numbers are not names, and speakers follow time order", () => {
+  const txt = (paragraphs) =>
+    parseUserTranscript(paragraphs.join("\n\n"), ".txt", { podcast: true }).map((s) => [
+      s.speaker,
+      s.text,
+    ]);
+  // A repeated "Note:" or "10:" is ordinary text, kept whole and attributed to nobody.
+  assert.deepEqual(txt(["Note: use the switch.", "Note: then reboot.", "More text."]), [
+    [null, "Note: use the switch."],
+    [null, "Note: then reboot."],
+    [null, "More text."],
+  ]);
+  assert.deepEqual(txt(["10: first", "10: second"]), [
+    [null, "10: first"],
+    [null, "10: second"],
+  ]);
+  // Cues listed out of time order: the unmarked cue at 11 s continues Bob at 10 s, not
+  // Alice, who is listed after Bob but speaks at 0 s.
+  const vtt = parseUserTranscript(
+    "WEBVTT\n\n00:10.000 --> 00:11.000\n<v Bob>Later turn.\n\n00:00.000 --> 00:01.000\n<v Alice>First turn.\n\n00:11.000 --> 00:12.000\nStill Bob speaking.\n",
+    ".vtt",
+    { podcast: true },
+  );
+  assert.deepEqual(
+    vtt.map((s) => [s.startMs, s.speaker]),
+    [
+      [10000, "Bob"],
+      [0, "Alice"],
+      [11000, "Bob"],
+    ],
+  );
+});
+
 test("a cue whose text starts with the word STYLE is still a cue", () => {
   const segments = parseUserTranscript(
     "WEBVTT\n\n00:00.500 --> 00:02.000\nSTYLE matters here.\n",
