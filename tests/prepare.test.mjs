@@ -337,9 +337,6 @@ test("WMA audio (ASF container), listed in the support matrix, is accepted", asy
       "error",
       "-i",
       f.request.source.value,
-      // ASF stores a millisecond duration rounded down; keep the last cue inside it.
-      "-af",
-      "apad=pad_dur=1",
       "-c:a",
       "wmav2",
       wma,
@@ -348,11 +345,100 @@ test("WMA audio (ASF container), listed in the support matrix, is accepted", asy
   );
   f.request.source = { kind: "local", value: wma };
   await writeFile(f.args.request, jsonBytes(f.request));
+  // ASF records 5.999 s for this 6 s file and its audio decodes to 5.991 s; the last cue,
+  // made for the original, ends at 6.000 s. Like a player, keep it and end it with the media.
   const prepared = await prepare(f.args);
   assert.equal(prepared.status, "ok");
+  assert.ok(prepared.issues.some((i) => i.code === "TRANSCRIPT_END_CLAMPED"));
   const evidence = (await readJson(path.join(f.work, "evidence.json"))).data;
   assert.equal(evidence.source.mediaType, "audio");
   assert.equal(evidence.segments.length, 3);
+  assert.equal(evidence.segments[2].endMs, evidence.source.durationMs);
+  const raw = (await readJson(path.join(f.work, "raw", "extraction.json"))).data;
+  assert.equal(raw.transcriptEndClamped.cues[0].endMs, 6000);
+});
+
+test("AIFF audio gets an AAC playback copy; cues out of order are sorted; no empty work folder remains", async (t) => {
+  const f = await acquisition(t);
+  const aiff = path.join(f.root, "source.aiff");
+  await execute("ffmpeg", ["-nostdin", "-hide_banner", "-loglevel", "error", "-i", f.request.source.value, "-c:a", "pcm_s16be", aiff], { timeout: 30000 });
+  const srt = (await readFile(f.transcript, "utf8")).split(/\n\n/).filter(Boolean);
+  await writeFile(f.transcript, [srt[2], srt[0], srt[1]].join("\n\n") + "\n");
+  f.request.source = { kind: "local", value: aiff };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  const prepared = await prepare(f.args);
+  assert.equal(prepared.status, "ok");
+  const codes = prepared.issues.map((i) => i.code);
+  assert.ok(codes.includes("PLAYBACK_MEDIA_TRANSCODED"));
+  assert.ok(codes.includes("TRANSCRIPT_REORDERED"));
+  const evidence = (await readJson(path.join(f.work, "evidence.json"))).data;
+  assert.deepEqual(evidence.segments.map((s) => s.startMs), [0, 2000, 4000]);
+  const manifest = (await readJson(path.join(f.work, "manifest.json"))).data;
+  assert.equal(path.basename(manifest.mediaPath), "playback.m4a");
+  const probe = await execute("ffprobe", ["-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", manifest.mediaPath]);
+  assert.equal(probe.stdout.trim(), "aac");
+  // The original WAV needs no copy, and its unused extraction folder is gone.
+  f.request.source = { kind: "local", value: path.join(f.root, "source.wav") };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  const work = path.join(f.root, "wav-job");
+  await prepare({ ...f.args, "work-dir": work });
+  assert.ok(!(await readdir(work)).some((name) => name.startsWith("ingest-")));
+});
+
+test("audio length comes from decoding: a cut-short file is corrected, a header-only one refused", async (t) => {
+  const f = await acquisition(t);
+  const mp3 = path.join(f.root, "full.mp3");
+  await execute("ffmpeg", ["-nostdin", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=20", "-c:a", "libmp3lame", "-b:a", "64k", mp3], { timeout: 30000 });
+  const bytes = await readFile(mp3);
+  const cut = path.join(f.root, "cut.mp3");
+  await writeFile(cut, bytes.subarray(0, Math.floor(bytes.length / 2)));
+  // The header still says 20 s; only about 10 s decode.
+  f.request.source = { kind: "local", value: cut };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  const prepared = await prepare(f.args);
+  assert.equal(prepared.status, "ok");
+  assert.ok(prepared.issues.some((i) => i.code === "MEDIA_DURATION_CORRECTED"));
+  const evidence = (await readJson(path.join(f.work, "evidence.json"))).data;
+  assert.ok(Math.abs(evidence.source.durationMs - 10000) < 600, String(evidence.source.durationMs));
+  // A transcript for the whole recording names the cut-short file as the cause.
+  await writeFile(
+    f.transcript,
+    "1\n00:00:00,000 --> 00:00:15,000\nThe whole recording.\n",
+  );
+  await assert.rejects(prepare({ ...f.args, "work-dir": path.join(f.root, "cut-job") }), {
+    code: "INVALID_CONTRACT",
+    detail: "transcript-past-decoded-audio",
+  });
+  // A header with almost no audio behind it cannot carry the transcript either.
+  const header = path.join(f.root, "header.mp3");
+  await writeFile(header, bytes.subarray(0, 1024));
+  f.request.source = { kind: "local", value: header };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  await assert.rejects(prepare({ ...f.args, "work-dir": path.join(f.root, "header-job") }), {
+    code: "INVALID_CONTRACT",
+    detail: "transcript-past-decoded-audio",
+  });
+  // A file whose audio stream decodes to nothing is refused as such.
+  const empty = path.join(f.root, "empty.wav");
+  const wav = Buffer.alloc(44);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  await writeFile(empty, wav);
+  f.request.source = { kind: "local", value: empty };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  await assert.rejects(prepare({ ...f.args, "work-dir": path.join(f.root, "empty-job") }), {
+    code: "SOURCE_UNSUPPORTED",
+    detail: "no-decodable-audio",
+  });
 });
 test("cache includes transcript format and explicit ASR executable bytes", async (t) => {
   const f = await acquisition(t);
@@ -507,7 +593,7 @@ fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000
   );
 });
 
-test("local ASR coverage: untranscribed sound and extra audio tracks are reported, nothing is added", async (t) => {
+async function gapFixture(t, gapCue) {
   const f = await acquisition(t);
   const tracks = path.join(f.root, "two-tracks.mkv");
   await execute(
@@ -535,14 +621,16 @@ test("local ASR coverage: untranscribed sound and extra audio tracks are reporte
     ],
     { timeout: 30000 },
   );
-  // Whisper "hears" only the first half second of a six-second tone.
+  // The first pass "hears" only the first half second of a six-second tone; a second pass
+  // over a skipped stretch (its clip is named gap-N.wav) answers with `gapCue`.
   const cpu = await fakeTool(
     path.join(f.root, "cpu-asr"),
     `
 import fs from 'node:fs';
 const args = process.argv.slice(2);
 if (args.includes('--version')) { console.log('whisper.cpp version: 1.9.5'); process.exit(0); }
-fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000 --> 00:00:00,500\\nHello there.\\n');
+const gap = /gap-\\d+\\.wav$/.test(args.at(-1));
+fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', gap ? ${JSON.stringify(gapCue)} : '1\\n00:00:00,000 --> 00:00:00,500\\nHello there.\\n');
 `,
   );
   const model = path.join(f.root, "model.bin");
@@ -556,6 +644,11 @@ fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000
     { asrPreferencePath: path.join(f.root, "no-preference.json") },
   );
   assert.equal(result.status, "ok");
+  return { f, result };
+}
+
+test("local ASR coverage: a stretch the second pass also leaves empty and extra audio tracks are reported", async (t) => {
+  const { f, result } = await gapFixture(t, "");
   const issues = Object.fromEntries(result.issues.map((i) => [i.code, i.message]));
   assert.match(issues.ASR_UNTRANSCRIBED_AUDIO, /^1 stretch with sound has no transcript: 00:01–00:06\./);
   assert.match(issues.MULTIPLE_AUDIO_TRACKS, /2 audio tracks \(kor, eng\)/);
@@ -565,6 +658,29 @@ fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000
   assert.deepEqual(raw.localAsrCoverage.untranscribed, [
     { startMs: 1000, endMs: 6000, soundMs: 5000 },
   ]);
+  assert.deepEqual(raw.localAsrGapFill.retried, [
+    { startMs: 1000, endMs: 6000, segments: 0 },
+  ]);
+});
+
+test("a stretch the first pass skipped is transcribed on its own and merged in time order", async (t) => {
+  const { f, result } = await gapFixture(
+    t,
+    "1\n00:00:00,200 --> 00:00:02,000\nSecond pass.\n",
+  );
+  const issues = Object.fromEntries(result.issues.map((i) => [i.code, i.message]));
+  assert.match(issues.ASR_GAPS_RETRANSCRIBED, /^seg-000002 came from a second pass over 1 stretch/);
+  assert.equal(issues.ASR_UNTRANSCRIBED_AUDIO, undefined);
+  const evidence = (await readJson(path.join(f.work, "evidence.json"))).data;
+  assert.deepEqual(
+    evidence.segments.map((s) => [s.startMs, s.endMs, s.text]),
+    [
+      [0, 500, "Hello there."],
+      [1200, 3000, "Second pass."],
+    ],
+  );
+  const raw = (await readJson(path.join(f.work, "raw", "extraction.json"))).data;
+  assert.deepEqual(raw.localAsrGapFill.added, [1]);
 });
 
 test("a failing ASR runtime is reported as the runtime, not as an unsupported source", async (t) => {

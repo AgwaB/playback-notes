@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, realpath, writeFile, mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { jsonBytes, sha256 } from "../lib/io.mjs";
@@ -157,24 +157,30 @@ export async function fixture(options = {}) {
   );
   const work = path.join(root, "work"),
     out = path.join(root, "public");
-  await mkdir(work);
-  await mkdir(out);
-  const data = sampleData();
-  options.mutate?.(data);
-  data.evidenceSha256 = sha256(jsonBytes(data.evidence));
-  data.report.evidenceRef.sha256 = data.evidenceSha256;
-  data.reportSha256 = sha256(jsonBytes(data.report));
-  const args = { "work-dir": work, "out-dir": out };
-  for (const name of ["request", "evidence", "analysis", "report"]) {
-    args[name] = path.join(work, `${name}.json`);
-    await writeFile(args[name], jsonBytes(data[name]));
+  try {
+    await mkdir(work);
+    await mkdir(out);
+    const data = sampleData();
+    options.mutate?.(data);
+    data.evidenceSha256 = sha256(jsonBytes(data.evidence));
+    data.report.evidenceRef.sha256 = data.evidenceSha256;
+    data.reportSha256 = sha256(jsonBytes(data.report));
+    const args = { "work-dir": work, "out-dir": out };
+    for (const name of ["request", "evidence", "analysis", "report"]) {
+      args[name] = path.join(work, `${name}.json`);
+      await writeFile(args[name], jsonBytes(data[name]));
+    }
+    return {
+      root,
+      work,
+      out,
+      args,
+      data,
+      bundle: { ...data, workDir: work, maps: validateData(data) },
+    };
+  } catch (error) {
+    // Tests that expect an invalid fixture to be rejected never get the root to clean up.
+    await rm(root, { recursive: true, force: true });
+    throw error;
   }
-  return {
-    root,
-    work,
-    out,
-    args,
-    data,
-    bundle: { ...data, workDir: work, maps: validateData(data) },
-  };
 }

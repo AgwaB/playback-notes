@@ -80,6 +80,17 @@ jobs:
             printf 'TEST_BROWSER_EXECUTABLE=%s\n' "$browser" >> "$GITHUB_ENV"
           fi
       - run: npm ci --engine-strict --no-audit --no-fund
+      # Korean Windows users have non-ASCII profile and temp paths; hosted
+      # runners do not. Every test that makes a temporary directory uses one.
+      - name: Use a Korean temporary directory with spaces on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $temp = Join-Path $env:RUNNER_TEMP '임시 폴더 (테스트)'
+          New-Item -ItemType Directory -Force -Path $temp | Out-Null
+          $env_file = $env:GITHUB_ENV
+          "TEMP=$temp" | Out-File -FilePath $env_file -Append -Encoding utf8
+          "TMP=$temp" | Out-File -FilePath $env_file -Append -Encoding utf8
       - name: Exercise CRLF checkout
         if: runner.os == 'Windows'
         shell: pwsh

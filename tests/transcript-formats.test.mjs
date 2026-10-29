@@ -138,6 +138,27 @@ test("podcast transcripts carry the speaker until it changes (Podcasting 2.0 VTT
       ["Gillian", "Thanks."],
     ],
   );
+  // Publishers also write "Name:" in VTT and plain text (Darknet Diaries, Acquired).
+  assert.deepEqual(
+    parseUserTranscript(
+      "WEBVTT\n\n00:00.000 --> 00:01.000\nJACK: [Music] There's a kind of silence\n\n00:01.000 --> 00:02.000\nthat follows an attack.\n\n00:02.000 --> 00:03.000\nJACK: Your throat gets dry.\n",
+      ".vtt",
+      { podcast: true },
+    ).map((s) => [s.speaker, s.text]),
+    [
+      ["JACK", "[Music] There's a kind of silence"],
+      ["JACK", "that follows an attack."],
+      ["JACK", "Your throat gets dry."],
+    ],
+  );
+  assert.deepEqual(
+    parseUserTranscript(
+      "Ben: All right, David.\n\nDavid: Oh, yes!\n\nBen: Let's go.\n\nDavid: Sure.\n",
+      ".txt",
+      { podcast: true },
+    ).map((s) => s.speaker),
+    ["Ben", "David", "Ben", "David"],
+  );
   // Outside podcasts, a user's SRT keeps "Name:" as text and VTT voices do not carry over.
   assert.equal(parseUserTranscript(srt(cards), ".srt")[0].text, cards[0]);
   assert.deepEqual(
