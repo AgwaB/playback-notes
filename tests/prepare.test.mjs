@@ -663,6 +663,51 @@ test("local ASR coverage: a stretch the second pass also leaves empty and extra 
   ]);
 });
 
+test("a long skipped stretch the whole-stretch pass leaves empty is retried in 8 s windows", async (t) => {
+  const f = await acquisition(t);
+  const tone = path.join(f.root, "tone.wav");
+  await execute("ffmpeg", ["-nostdin", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=20", "-ac", "1", "-ar", "16000", tone], { timeout: 30000 });
+  // First pass: 0.5 s heard. Whole-stretch retry (gap-N.wav): nothing, as over intro music.
+  // Window retries (gap-N-wM.wav): one cue each.
+  const cpu = await fakeTool(
+    path.join(f.root, "cpu-asr"),
+    `
+import fs from 'node:fs';
+const args = process.argv.slice(2);
+if (args.includes('--version')) { console.log('whisper.cpp version: 1.9.5'); process.exit(0); }
+const clip = args.at(-1);
+const out = /gap-\\d+-w\\d+\\.wav$/.test(clip) ? '1\\n00:00:00,200 --> 00:00:02,000\\nWindow text.\\n'
+  : /gap-\\d+\\.wav$/.test(clip) ? '' : '1\\n00:00:00,000 --> 00:00:00,500\\nHello there.\\n';
+fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', out);
+`,
+  );
+  const model = path.join(f.root, "model.bin");
+  await writeFile(model, "model");
+  f.request.source = { kind: "local", value: tone };
+  f.request.transcriptFile = null;
+  f.request.policy.asr = "local";
+  await writeFile(f.args.request, jsonBytes(f.request));
+  const result = await prepare(
+    { ...f.args, "local-asr-executable": cpu, "local-asr-model": model },
+    { asrPreferencePath: path.join(f.root, "no-preference.json") },
+  );
+  assert.equal(result.status, "ok");
+  const evidence = (await readJson(path.join(f.work, "evidence.json"))).data;
+  assert.deepEqual(
+    evidence.segments.map((s) => [s.startMs, s.endMs, s.text]),
+    [
+      [0, 500, "Hello there."],
+      [1200, 3000, "Window text."],
+      [9200, 11000, "Window text."],
+      [17200, 19000, "Window text."],
+    ],
+  );
+  const raw = (await readJson(path.join(f.work, "raw", "extraction.json"))).data;
+  assert.deepEqual(raw.localAsrGapFill.retried, [
+    { startMs: 1000, endMs: 20000, segments: 3, windows: 3 },
+  ]);
+});
+
 test("a stretch the first pass skipped is transcribed on its own and merged in time order", async (t) => {
   const { f, result } = await gapFixture(
     t,
