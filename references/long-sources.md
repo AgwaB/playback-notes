@@ -4,7 +4,7 @@ Reading every chunk into one context makes cost grow with length (a 3.5-hour pod
 
 ## Stage 1 — one note per chunk
 
-For each `chunks/chunk-NNNNN.json`, write `notes/chunk-NNNNN.json` (private, next to the job). The writer reads **only that chunk** (plus its listed context segments), so chunks can be noted in parallel by delegated workers, each with a small context.
+For each chunk, write `notes/chunk-NNNNN.json` (private, next to the job). Read it with `scripts/read.mjs --evidence "$JOB/evidence.json" --chunk chunk-NNNNN --sha256 <evidence-hash>` rather than dumping raw JSON; follow all `NEXT offset=N` pages with `--offset N --sha256 <same-hash>` until `END`. Pin the parent-supplied evidence hash throughout; changed evidence requires a fresh review, not mixed snapshots. The writer reads **only that chunk** (plus its listed context segments), so chunks can be noted in parallel by delegated workers, each with a small context. The parent need not re-read raw chunks already covered by validated notes, except for source spot-checks. Raw `chunks/chunk-NNNNN.json` remain available for targeted inspection.
 
 ```json
 {
@@ -43,7 +43,7 @@ Lex Fridman #333 (3 h 28 min, 5,502 caption segments, 18 chunks): single-host au
 
 ## Boundaries
 
-- Two-stage citations point at the *anchor* segments a note writer chose for each claim, not at every segment that supports it; a synthesized statement may therefore rest on a chunk's reading beyond its 1–3 cited segments. Spot-check claims against the transcript and keep statements close to the digest wording.
+- Preserve citations covering the actual supporting run, including material qualifications; a single anchor is not a substitute for the rest of the support. Keep synthesized statements close to the validated notes. If synthesis changes a claim, re-read the relevant evidence and adjust its supporting citations. Spot-check claims against the transcript.
 
 - Delegated note writers get one chunk each, the evidence hash, and the rules above; they must not read other chunks or invent timing. The parent spot-checks a sample of claims against the transcript before synthesis.
 - Partial coverage is still partial: if some chunks have no notes, keep `status: partial` and use the existing partial-analysis approval; do not synthesize over missing stretches.

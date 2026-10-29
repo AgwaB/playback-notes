@@ -1,6 +1,6 @@
 # Structured report authoring
 
-Use [the report schema](../schemas/report.schema.json) and [the evidence schema](../schemas/evidence.schema.json) as the executable contract. Both modes use the same block vocabulary and fixed renderer.
+Start with scaffold's authoring card and the examples here. [The report schema](../schemas/report.schema.json) and [the evidence schema](../schemas/evidence.schema.json) are the executable contract; consult relevant fields only when needed, rather than reading both schemas in full. Both modes use the same block vocabulary and fixed renderer.
 
 ## Top-level fields
 

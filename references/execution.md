@@ -2,6 +2,25 @@
 
 These are **host tool calls**, not commands the user must learn. Substitute absolute paths; resolve the scripts from the installed skill root. Scripts never prompt or invoke an LLM.
 
+For ordinary captions or a supplied transcript, start with [quick execution](quickstart.md). Read this reference by section, not end-to-end.
+
+## Contents
+
+- [Installation and capabilities](#installation-and-capabilities)
+- [Private/public layout](#privatepublic-layout)
+- [Request](#request)
+- [Tool sequence / local ASR](#tool-sequence)
+- [Automatic ko-en recheck](#automatic-ko-en-recheck)
+- [Reviewing a mixed-language passage](#reviewing-a-mixed-language-passage)
+- [Host capture and transcript sharing](#host-capture-and-transcript-sharing)
+- [Frames and OCR](#frames-and-ocr)
+- [Acquisition canary](#acquisition-canary)
+- [Chunk notes and authoring](#chunk-notes-and-authoring)
+- [PDF and export options](#pdf-and-export-options)
+- [Playback](#playback)
+- [Result envelope and exit codes](#result-envelope-and-exit-codes)
+- [Cache and revision rules](#cache-and-revision-rules)
+
 ## Installation and capabilities
 
 After installation has been authorized, install dependencies according to the installation method:
@@ -133,9 +152,13 @@ node "$SKILL/scripts/asr-review.mjs" --source /absolute/private/media --work-dir
 
 The review deadline includes final publication, artifact verification and writer-lock release. A timeout withdraws this invocation's review where the cooperative lock and file identity still permit it. If cleanup cannot be confirmed, the CLI explicitly warns that an unverified artifact may remain; do not use it as a completed review or delete another writer's lock. Filesystem calls are cooperatively bounded, not forcibly interruptible.
 
+## Host capture and transcript sharing
+
 For explicitly approved host-browser YouTube capture, pass `--youtube-capture /absolute/private/capture.json`; see the [capture contract and acquisition rules](youtube-browser-capture.md). It cannot be combined with `transcriptFile`. DOM imports create partial evidence and require the existing snapshot-bound approval. This import option does not launch a browser.
 
 `publishTranscript` (default `true`) puts the full transcript in the HTML source panel; with `false` the panel keeps only one timestamp per segment so citations still seek and highlight, and the privacy notice says the transcript is not included. It is part of the revision identity (changing it needs a new output directory). Markdown and PDF never contain the transcript.
+
+## Frames and OCR
 
 `policy.visual` is `off`, `frames` or `local-ocr`. `frames` samples key-scene candidates without any OCR tool: by default every max(1 s, ceil(duration ÷ (cap − 1))) when the media duration is known (20 s otherwise) — so interval samples alone fit the cap and reach the end of a source of known duration, within the 64 MiB frame budget (high-detail video at large caps can exceed it and fails explicitly with `RESOURCE_LIMIT`) — plus hard cuts (ffmpeg scene score > 0.3); cap `--ocr-max-frames` (default 120 in this mode, 60 for OCR, max 600); `--ocr-sample-seconds`/`--ocr-scene-threshold` override. If cuts exhaust the cap before the end, the cuts are dropped and the interval-only pass is kept (`FRAMES_CUTS_DROPPED`); explicit settings that stop before the end, or a capped pass of a source whose duration is unknown, produce `FRAMES_TRUNCATED` with the covered time. Without a transcript, sampled frames alone are usable (visual-only) evidence: cite only frames you opened. Every sampled frame is kept (no text to de-duplicate on); `assets/contact-sheet-NN.jpg` (24 tiles per sheet, 4 per row) and `assets/contact-sheet.txt` (sheet, tile → frame → time → file, plus look-alike runs from 64×36 RGB thumbnail differences: near-identical when every frame is within 1 of its neighbour and of the run's first frame, build-up when neighbours are within 3 — thresholds measured on one slide talk; a 40×8-pixel change on a 720p frame moves the difference by only 0.09, so a run never proves equal content; nothing is dropped) are written beside them for review (not evidence) and listed in the prepare envelope; evidence carries `FRAMES_SAMPLED`. For a YouTube source either visual mode needs `--yt-dlp-executable`: a ≤480p video-only HTTPS track (H.264 preferred) is streamed through the same metered pipe as audio (`PLATFORM_VIDEO_DOWNLOADED`; audio for ASR is `PLATFORM_MEDIA_DOWNLOADED`), never a muxed or fragmented format.
 
@@ -147,11 +170,15 @@ On macOS use Vision: compile the shipped helper once with `swiftc -O -o "$PRIVAT
 
 `--browser-executable` only selects the PDF/preflight capability; acquisition never launches a browser.
 
+## Acquisition canary
+
 When YouTube acquisition starts failing, run the canary before changing anything: it performs one bounded caption acquisition with the request's policy (and, with `--yt-dlp-executable`, a `--simulate` probe) and classifies the outcome — `CANARY_CAPTIONS_OK`, `_BLOCKED` (platform gate: a policy/approval question), `_BROKEN` (token minting or adapter failure: a code/update question), `_NO_CAPTIONS` / `_UNAVAILABLE` (pick another canary video), `_ENVIRONMENT` (this process has no network or no confined token runtime, e.g. a sandboxed shell — run the canary elsewhere), `CANARY_YTDLP_OK` / `_BROKEN` (usually an outdated yt-dlp). Nothing is written into the job.
 
 ```bash
 node "$SKILL/scripts/canary.mjs" --request "$JOB/request.json" --work-dir "$JOB" --yt-dlp-executable /absolute/yt-dlp
 ```
+
+## Chunk notes and authoring
 
 For long sources, between prepare and authoring, validate per-chunk notes and build the digest (see [long sources](long-sources.md)):
 
@@ -176,11 +203,15 @@ node "$SKILL/scripts/verify-output.mjs" --out-dir "$OUT"
 
 `verify-output.mjs` checks that the manifest's renderer identity (SHA-256 over the skill's `lib`, `templates`, `schemas`, `scripts` and `package.json`) equals the installed skill's and that every listed file still matches its hash; `RENDERER_MISMATCH` means a modified or copied renderer (or another skill version) produced the revision. It is tamper-evident, not tamper-proof.
 
+## PDF and export options
+
 Pass every flag and value as separate shell words. Do not collect them in one variable and expand it unquoted: zsh does not word-split `$ARGS` (use a shell array, `"${args[@]}"`, or repeat the flags), and the CLI then reports the whole string as one unknown option.
 
 For a request containing `pdf`, add `--browser-executable /absolute/path/to/chromium` to the preflight and export commands. Use an existing browser; default HTML/Markdown output does not need it.
 
 `export.mjs` defaults to the requested non-HTML formats (an HTML-only request returns `ok` with `NOTHING_TO_EXPORT`, so the same render → export → verify sequence works for every request). `--formats markdown` or `--formats pdf` retries a subset, but overall completion still reflects **all** requested formats. `--font-dir /absolute/fonts` loads 1–16 existing TTF/OTF/WOFF fonts into the isolated PDF renderer; it does not upload or copy them into the public HTML. Verify their licensing before distribution.
+
+## Playback
 
 For playback:
 
@@ -192,7 +223,7 @@ The result includes a random-token `http://127.0.0.1:<port>/.../index.html` URL.
 
 ## Result envelope and exit codes
 
-Each script writes one JSON line to stdout. There are no raw dependency logs or credential-bearing URLs in normal result envelopes.
+Each stage writes one JSON line to stdout, except `read.mjs`: successful reads are compact paged UTF-8 evidence text; its failures use the usual JSON envelope (see [quick execution](quickstart.md#2-prepare-inspect-scaffold)). There are no raw dependency logs or credential-bearing URLs in normal result envelopes.
 
 ```json
 {

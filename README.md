@@ -15,7 +15,9 @@
 <p align="center">
   <a href="#example-output">Example output</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="#usage">Usage</a>
+  <a href="#usage">Usage</a> ·
+  <a href="#installation">Installation</a> ·
+  <a href="#token-usage">Token usage</a>
 </p>
 
 ## Example output
@@ -34,7 +36,21 @@ Andrej Karpathy's [“[1hr Talk] Intro to Large Language Models”](https://www.
 
 ## Usage
 
-### 1. Install
+Send your agent a YouTube or Apple Podcasts **episode** link, or an audio/video file or direct URL. You can also supply an SRT, VTT or TXT transcript.
+
+- **Briefing** — key conclusions and why they hold.
+- **Deep-dive** — detailed explanations, examples and caveats.
+
+```text
+Give me a briefing on this video as HTML and Markdown: <url>
+Analyze this recording in depth, in Spanish, and export a PDF: <path>
+```
+
+Choose **HTML, Markdown, PDF**, or any combination; the agent asks if you don't specify. Reports default to `.playback-notes/reports/` in your working folder.
+
+Ask follow-up questions about the same source for timestamp-cited answers. If a transcript is unavailable, the agent asks before local transcription.
+
+## Installation
 
 Requires **Node.js 24.15+ within the 24.x line, or 26+** (Node 25 is not supported).
 
@@ -72,28 +88,16 @@ This installs a read-only copy in `~/.agents/skills/playback-notes`, where Codex
 
 On Windows, follow the [PowerShell setup](references/windows.md); on WSL, the [WSL guide](references/wsl.md).
 
-### 2. Ask your agent
+## Token usage
 
-Give it a YouTube link, an Apple Podcasts episode link, a local audio or video file (MP3, M4A, WAV, FLAC, MP4, MOV, MKV and more), a direct link to such a file, or a transcript (SRT, VTT, TXT). A podcast transcript published in the show's feed is used directly; otherwise audio is transcribed locally once you approve it. Choose how deep the report goes:
+Same one-hour Karpathy talk · `openai-codex/gpt-6.1-sol` (medium) · English HTML + Markdown · automatic captions. Averages from **2 runs per mode**; observed ranges in parentheses.
 
-| Mode | What you get | Ask with words like | For the 1-hour example |
+| Mode | Processed tokens (mean; range) | Cached input | Estimated cost |
 | --- | --- | --- | --- |
-| **Briefing** | The main conclusions and why they hold | “summarize”, “briefing”, “key points” | 4 key points · 6 sections · ≈ 6 min read |
-| **Deep-dive** | Topic-by-topic explanations with reasoning, examples, caveats and open questions | “in detail”, “deep-dive”, “analyze” | 5 key points · 18 sections · ≈ 14 min read |
+| **Briefing** | **420k** (307k–533k) | 349k | $0.212 |
+| **Deep-dive** | **679k** (526k–832k) | 599k | $0.294 |
 
-```text
-Give me a briefing on this video: <video-url>
-Create a deep-dive on this lecture, in Spanish, and make a PDF too: <video-url>
-Summarize this local video using the SRT file I supplied: <path>
-What was decided in this meeting recording? <path-to-audio>
-Give me a briefing on this episode: <apple-podcasts-episode-link>
-```
-
-If you don't name the formats, the agent asks which you want: HTML, Markdown, PDF or any combination. Otherwise it asks only for missing information or approval for optional local tools.
-
-Reports are saved in `.playback-notes/reports/` inside the folder where you run your agent, unless you name another folder. Private working files go in `.playback-notes/work/`. The folder is git-ignored, and each run gets its own job and report revision, so repeated runs never overwrite each other.
-
-Afterwards, keep asking about the source (“What exactly did they say about X?”). The agent answers from the same transcript and cites the moments it relies on.
+Totals include cached context re-read across all turns, not the required context-window size. Costs are host estimates; actual usage and charges vary.
 
 ## License
 
