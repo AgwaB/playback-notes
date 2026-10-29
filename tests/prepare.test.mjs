@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import {
   access,
@@ -394,11 +394,54 @@ test("a new extraction removes extraction folders a killed run left behind", asy
   await writeFile(path.join(left, "asr-input.wav"), "decoded audio of a killed run");
   const keep = path.join(f.work, "ingest-notes");
   await mkdir(keep);
+  // A folder whose owner is still running (a writer that entered through a lock race)
+  // is not touched.
+  const live = path.join(f.work, "ingest-Live12");
+  await mkdir(live);
+  await writeFile(path.join(live, ".owner"), String(process.ppid));
+  // One whose owner has exited is.
+  const gone = path.join(f.work, "ingest-Gone12");
+  await mkdir(gone);
+  const exited = await execute(process.execPath, ["-e", "console.log(process.pid)"]);
+  await writeFile(path.join(gone, ".owner"), exited.stdout.trim());
   const prepared = await prepare(f.args);
   assert.equal(prepared.status, "ok");
   const names = await readdir(f.work);
   assert.ok(!names.includes("ingest-AbC123"));
+  assert.ok(!names.includes("ingest-Gone12"));
+  assert.ok(names.includes("ingest-Live12"), "a running owner's folder is kept");
   assert.ok(names.includes("ingest-notes"), "only extraction folder names are removed");
+  assert.ok(
+    !names.some((n) => /^ingest-[A-Za-z0-9]{6}$/.test(n) && !["ingest-Live12"].includes(n)),
+    "the new run removed its own folder with its owner file",
+  );
+});
+
+test("a leftover extraction folder that cannot be removed does not stop a new extraction", {
+  skip: process.platform !== "win32",
+}, async (t) => {
+  const f = await acquisition(t);
+  const left = path.join(f.work, "ingest-Busy12");
+  await mkdir(left);
+  // Windows refuses to delete a file another process holds open without sharing delete.
+  const held = path.join(left, "asr-input.wav");
+  await writeFile(held, "still open");
+  const holder = spawn("powershell.exe", [
+    "-NoProfile",
+    "-Command",
+    `$f=[IO.File]::Open('${held.replace(/'/g, "''")}','Open','Read','Read'); Start-Sleep 20; $f.Close()`,
+  ], { stdio: "ignore" });
+  const exited = new Promise((resolve) => holder.once("exit", resolve));
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const prepared = await prepare(f.args);
+    assert.equal(prepared.status, "ok");
+    assert.ok((await readdir(f.work)).includes("ingest-Busy12"), "kept for a later run");
+  } finally {
+    // Release the file before the fixture's temporary folder is removed.
+    holder.kill();
+    await exited;
+  }
 });
 
 test("audio length comes from decoding: a cut-short file is corrected, a header-only one refused", async (t) => {

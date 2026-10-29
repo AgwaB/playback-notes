@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { access, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import {
@@ -176,13 +176,16 @@ export async function prepare(options, { asrPreferencePath = asrPreferencePaths(
             ]
           : [],
       );
-    // No evidence was committed here, and only the lock holder writes extraction folders,
-    // so any left are from a run killed before it could remove them (a closed terminal or
-    // a cancelled host). They can hold a decoded WAV and a copied model.
-    for (const entry of await readdir(workDir, { withFileTypes: true }))
-      if (entry.isDirectory() && /^ingest-[A-Za-z0-9]{6}$/.test(entry.name))
-        await rm(path.join(workDir, entry.name), { recursive: true, force: true });
-    const { extractSource } = await import("../lib/ingest.mjs");
+    // No evidence was committed here, so extraction folders whose owner is gone are from a
+    // run killed before it could remove them (a closed terminal or a cancelled host); they
+    // can hold a decoded WAV and a copied model. A folder still in use (a native tool of the
+    // killed run holding a file open, which Windows refuses to delete) is left for a later
+    // run rather than failing this one.
+    const { extractSource, leftoverExtractionFolders } = await import(
+      "../lib/ingest.mjs"
+    );
+    for (const folder of await leftoverExtractionFolders(workDir))
+      await rm(folder, { recursive: true, force: true }).catch(() => {});
     const extracted = await extractSource(request, extractionOptions);
     const evidence = makeEvidence(extracted);
     // Sampled frames move from the private extraction root into the job's assets/ so the
