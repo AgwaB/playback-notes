@@ -35,6 +35,7 @@ so this is not a security boundary against file additions or replacements by the
 - Apple Vision OCR and the BotGuard sandbox are macOS-only. The Windows caption path uses the Android-app caption list.
 
 Supplied SRT/VTT/TXT transcripts can be UTF-8, Notepad's "Unicode" (UTF-16) or a legacy code page such as EUC-KR/CP949, which is detected from the file's bytes and reported with `TRANSCRIPT_ENCODING_DETECTED`; a file too short to detect must be re-saved as UTF-8.
+The skill writes UTF-8 without a byte-order mark. Windows PowerShell 5.1 reads such files in the ANSI code page by default, so read evidence, chunks and reports with `Get-Content -Raw -Encoding UTF8` (PowerShell 7 already defaults to UTF-8), and set `[Console]::OutputEncoding = [Text.Encoding]::UTF8` before capturing a script's output in a variable; output that is not captured is passed through unchanged.
 Quote CLI paths that contain spaces or Korean characters. In JSON, write paths as `C:/Videos/sample.mp4` or
 `C:\\Videos\\sample.mp4`. Keep work and public output directories separate.
 
