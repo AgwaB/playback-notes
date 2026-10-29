@@ -264,7 +264,8 @@ test("a stale lock another writer moves on from this writer's aside name is not 
     return { issues: [] };
   });
   assert.ok(entered);
-  assert.deepEqual(result.issues, [], "the other writer, not this one, recovered the stale lock");
+  // The writer that enters after a takeover discloses it, whichever writer moved the lock.
+  assert.deepEqual(result.issues.map((i) => i.code), ["STALE_LOCK_RECOVERED"]);
 });
 
 test("two writers taking over the same stale lock never both enter", async (t) => {

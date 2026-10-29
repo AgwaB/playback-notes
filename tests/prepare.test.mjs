@@ -12,6 +12,7 @@ import {
   rm,
   readFile,
   symlink,
+  utimes,
 } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -387,11 +388,36 @@ test("AIFF audio gets an AAC playback copy; cues out of order are sorted; no emp
   assert.ok(!(await readdir(work)).some((name) => name.startsWith("ingest-")));
 });
 
+// A process ID that no running process has: that of a child that has exited, checked again
+// right before use because Windows reuses process IDs quickly.
+async function exitedPid() {
+  for (;;) {
+    const { stdout } = await execute(process.execPath, ["-e", "console.log(process.pid)"]);
+    const pid = Number(stdout.trim());
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === "ESRCH") return pid;
+    }
+  }
+}
+const longAgo = new Date(Date.now() - 120_000);
+
 test("a new extraction removes extraction folders a killed run left behind", async (t) => {
   const f = await acquisition(t);
+  // Without an owner file (killed before naming itself) and untouched for a while.
   const left = path.join(f.work, "ingest-AbC123");
   await mkdir(path.join(left, "asr-gaps-XyZ789"), { recursive: true });
   await writeFile(path.join(left, "asr-input.wav"), "decoded audio of a killed run");
+  await utimes(left, longAgo, longAgo);
+  // Killed between creating its owner file and writing the process ID.
+  const empty = path.join(f.work, "ingest-Empty1");
+  await mkdir(empty);
+  await writeFile(path.join(empty, ".owner"), "");
+  await utimes(empty, longAgo, longAgo);
+  // Without an owner but just created or just finished: another writer's, left alone.
+  const fresh = path.join(f.work, "ingest-Fresh1");
+  await mkdir(fresh);
   const keep = path.join(f.work, "ingest-notes");
   await mkdir(keep);
   // A folder whose owner is still running (a writer that entered through a lock race)
@@ -402,17 +428,22 @@ test("a new extraction removes extraction folders a killed run left behind", asy
   // One whose owner has exited is.
   const gone = path.join(f.work, "ingest-Gone12");
   await mkdir(gone);
-  const exited = await execute(process.execPath, ["-e", "console.log(process.pid)"]);
-  await writeFile(path.join(gone, ".owner"), exited.stdout.trim());
+  await writeFile(path.join(gone, ".owner"), String(await exitedPid()));
   const prepared = await prepare(f.args);
   assert.equal(prepared.status, "ok");
   const names = await readdir(f.work);
   assert.ok(!names.includes("ingest-AbC123"));
+  assert.ok(!names.includes("ingest-Empty1"));
   assert.ok(!names.includes("ingest-Gone12"));
+  assert.ok(names.includes("ingest-Fresh1"), "a recently changed unowned folder is kept");
   assert.ok(names.includes("ingest-Live12"), "a running owner's folder is kept");
   assert.ok(names.includes("ingest-notes"), "only extraction folder names are removed");
   assert.ok(
-    !names.some((n) => /^ingest-[A-Za-z0-9]{6}$/.test(n) && !["ingest-Live12"].includes(n)),
+    !names.some(
+      (n) =>
+        /^ingest-[A-Za-z0-9]{6}$/.test(n) &&
+        !["ingest-Live12", "ingest-Fresh1"].includes(n),
+    ),
     "the new run removed its own folder with its owner file",
   );
 });
@@ -426,14 +457,22 @@ test("a leftover extraction folder that cannot be removed does not stop a new ex
   // Windows refuses to delete a file another process holds open without sharing delete.
   const held = path.join(left, "asr-input.wav");
   await writeFile(held, "still open");
+  await writeFile(path.join(left, ".owner"), String(await exitedPid()));
+  const ready = path.join(f.root, "holder-ready");
+  const quote = (value) => value.replace(/'/g, "''");
   const holder = spawn("powershell.exe", [
     "-NoProfile",
     "-Command",
-    `$f=[IO.File]::Open('${held.replace(/'/g, "''")}','Open','Read','Read'); Start-Sleep 20; $f.Close()`,
+    `$f=[IO.File]::Open('${quote(held)}','Open','Read','Read'); New-Item -ItemType File -Path '${quote(ready)}' | Out-Null; Start-Sleep 30; $f.Close()`,
   ], { stdio: "ignore" });
   const exited = new Promise((resolve) => holder.once("exit", resolve));
   try {
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    // Wait until the file is actually held open; PowerShell can take seconds to start.
+    for (let waited = 0; ; waited += 100) {
+      if (await access(ready).then(() => true, () => false)) break;
+      assert.ok(waited < 25_000, "PowerShell did not open the file");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     const prepared = await prepare(f.args);
     assert.equal(prepared.status, "ok");
     assert.ok((await readdir(f.work)).includes("ingest-Busy12"), "kept for a later run");

@@ -763,6 +763,14 @@ test("guarded fetch pins every public DNS response and manually rechecks redirec
   });
   assert.equal(await network.text("https://example.com/start"), "caption");
   assert.equal(calls.length, 2);
+  // The single-hop path the Android caption list uses sends it too.
+  const posted = await network.buffered("https://example.com/player", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(posted.status, 200);
+  assert.equal(calls.length, 3);
 });
 
 test("mixed/private DNS answers and DNS rebinding are refused before transport", async () => {
