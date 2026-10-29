@@ -356,7 +356,7 @@ fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000
         asr: "local",
         maxDownloadBytes: 1024 * 1024,
         extractTimeoutMs: 10000,
-        asrTimeoutMs: 10000,
+        asrTimeoutMs: 60000,
       },
     },
     {
@@ -364,6 +364,8 @@ fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000
       localAsrExecutable: f.cpu,
       localAsrGpuExecutable: f.gpu,
       localAsrModel: model,
+      // The version is asserted below: give a loaded test machine 10 s, not 2 s.
+      runtimeVersionBudgetMs: 10000,
     },
   );
   assert.equal(result.segments[0].text, "GPU transcription.");

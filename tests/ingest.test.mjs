@@ -311,9 +311,19 @@ test("explicit mock whisper.cpp exercises only the local adapter and real ffmpeg
     path.join(root, "mock-whisper"),
     `import fs from 'node:fs';\nif (Object.keys(process.env).some(k => /API_KEY|PROXY|NODE_OPTIONS/.test(k))) process.exit(5);\nif (process.argv.includes('--help')) { console.log('whisper.cpp build 1.7.6'); process.exit(0); }\nconst args=process.argv.slice(2); if (!args.includes('--model') || !args.includes('--output-srt') || args.includes('--download')) process.exit(6);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,100 --> 00:00:00,700\\nMock local adapter text.\\n');\n`,
   );
+  // The mock answers only --help, so the version takes two process starts; a loaded test
+  // machine gets 10 s for them instead of the 2 s best-effort cap.
   const result = await extractSource(
-    request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
-    { workDir: jobs, localAsrExecutable: executable, localAsrModel: model },
+    request({
+      transcriptFile: null,
+      policy: { ...basePolicy, asr: "local", asrTimeoutMs: 60000 },
+    }),
+    {
+      workDir: jobs,
+      localAsrExecutable: executable,
+      localAsrModel: model,
+      runtimeVersionBudgetMs: 10000,
+    },
   );
   assert.equal(result.extraction.method, "local-asr");
   assert.equal(result.extraction.provider, "whisper.cpp");
