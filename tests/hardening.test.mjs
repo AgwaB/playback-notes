@@ -236,6 +236,60 @@ test("a lock its writer stopped refreshing is taken over; a fresh one and anothe
   assert.equal(await readFile(lock, "utf8"), "another writer");
 });
 
+test("two writers taking over the same stale lock never both enter", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  // The second writer's move (or removal) of the stale lock is held until the first writer
+  // is inside; it must not remove the first writer's new lock.
+  await injected(
+    f,
+    `
+    const lock = path.join(out, '.write.lock');
+    await fsp.writeFile(lock, 'old');
+    await fsp.utimes(lock, new Date(0), new Date(0));
+    let entered;
+    const inside = new Promise((resolve) => { entered = resolve; });
+    let moves = 0;
+    const hold = async (file) => { if (file === lock && ++moves === 2) await inside; };
+    const { rename, rm } = fsp;
+    fsp.rename = async (from, to) => { await hold(from); return rename(from, to); };
+    fsp.rm = async (file, options) => { await hold(file); return rm(file, options); };
+    syncBuiltinESMExports();
+    const { withLock } = await import('./lib/io.mjs');
+    let writers = 0, most = 0;
+    const body = async () => {
+      most = Math.max(most, ++writers);
+      entered();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      writers--;
+      return { issues: [] };
+    };
+    const results = await Promise.allSettled([withLock(out, body), withLock(out, body)]);
+    assert.equal(most, 1);
+    assert.deepEqual(results.map((r) => r.status).sort(), ['fulfilled', 'rejected']);
+    assert.equal(results.find((r) => r.status === 'rejected').reason.code, 'BUSY');
+    assert.deepEqual(await fsp.readdir(out), []);
+  `,
+  );
+});
+
+test("a writer whose lock was replaced fails at the end and leaves the new lock alone", async (t) => {
+  const f = await fixture();
+  t.after(() => rm(f.root, { recursive: true, force: true }));
+  const lock = path.join(f.out, ".write.lock");
+  // A short write, done before any refresh: the replacement is a different file, even with
+  // the same text.
+  await assert.rejects(
+    withLock(f.out, async () => {
+      const text = await readFile(lock, "utf8");
+      await rm(lock);
+      await writeFile(lock, text);
+    }),
+    { code: "LOCK_COMPROMISED" },
+  );
+  assert.ok((await readdir(f.out)).includes(".write.lock"));
+});
+
 test("lock rejects concurrent writers and releases after cancellation rejection", async (t) => {
   const f = await fixture();
   t.after(() => rm(f.root, { recursive: true, force: true }));
