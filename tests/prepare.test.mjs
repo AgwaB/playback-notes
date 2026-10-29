@@ -345,17 +345,19 @@ test("WMA audio (ASF container), listed in the support matrix, is accepted", asy
   );
   f.request.source = { kind: "local", value: wma };
   await writeFile(f.args.request, jsonBytes(f.request));
-  // ASF records 5.999 s for this 6 s file and its audio decodes to 5.991 s; the last cue,
-  // made for the original, ends at 6.000 s. Like a player, keep it and end it with the media.
+  // The last cue, made for the original, ends at 6.000 s. FFmpeg 7+ writes an ASF length of
+  // 5.999 s (audio decodes to 5.991 s): like a player, keep the cue and end it with the media.
+  // FFmpeg 5 writes 6.036 s, so there the cue already fits.
   const prepared = await prepare(f.args);
   assert.equal(prepared.status, "ok");
-  assert.ok(prepared.issues.some((i) => i.code === "TRANSCRIPT_END_CLAMPED"));
   const evidence = (await readJson(path.join(f.work, "evidence.json"))).data;
   assert.equal(evidence.source.mediaType, "audio");
   assert.equal(evidence.segments.length, 3);
-  assert.equal(evidence.segments[2].endMs, evidence.source.durationMs);
+  const clamped = evidence.source.durationMs < 6000;
+  assert.equal(prepared.issues.some((i) => i.code === "TRANSCRIPT_END_CLAMPED"), clamped);
+  assert.equal(evidence.segments[2].endMs, clamped ? evidence.source.durationMs : 6000);
   const raw = (await readJson(path.join(f.work, "raw", "extraction.json"))).data;
-  assert.equal(raw.transcriptEndClamped.cues[0].endMs, 6000);
+  if (clamped) assert.equal(raw.transcriptEndClamped.cues[0].endMs, 6000);
 });
 
 test("AIFF audio gets an AAC playback copy; cues out of order are sorted; no empty work folder remains", async (t) => {
@@ -409,6 +411,17 @@ test("audio length comes from decoding: a cut-short file is corrected, a header-
     code: "INVALID_CONTRACT",
     detail: "transcript-past-decoded-audio",
   });
+  // A cut of 0.6 s is under 1 s but over 2 % of 20 s: the decoded length still wins.
+  const shaved = path.join(f.root, "shaved.mp3");
+  await writeFile(shaved, bytes.subarray(0, Math.floor(bytes.length * 0.97)));
+  await writeFile(f.transcript, "1\n00:00:00,000 --> 00:00:19,900\nThe whole recording.\n");
+  f.request.source = { kind: "local", value: shaved };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  await assert.rejects(prepare({ ...f.args, "work-dir": path.join(f.root, "shaved-job") }), {
+    code: "INVALID_CONTRACT",
+    detail: "transcript-past-decoded-audio",
+  });
+  await writeFile(f.transcript, "1\n00:00:00,000 --> 00:00:15,000\nThe whole recording.\n");
   // A header with almost no audio behind it cannot carry the transcript either.
   const header = path.join(f.root, "header.mp3");
   await writeFile(header, bytes.subarray(0, 1024));
@@ -646,6 +659,37 @@ fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', gap ? ${JSON.stri
   assert.equal(result.status, "ok");
   return { f, result };
 }
+
+test("an AIFF playback copy is made inside the extraction budget, so a long ASR run does not expire it", async (t) => {
+  const f = await acquisition(t);
+  const aiff = path.join(f.root, "source.aiff");
+  await execute("ffmpeg", ["-nostdin", "-hide_banner", "-loglevel", "error", "-i", f.request.source.value, "-c:a", "pcm_s16be", aiff], { timeout: 30000 });
+  // Transcription outlasts the whole extraction budget but stays inside its own.
+  const cpu = await fakeTool(
+    path.join(f.root, "slow-asr"),
+    `
+import fs from 'node:fs';
+const args = process.argv.slice(2);
+if (args.includes('--version')) { console.log('whisper.cpp version: 1.9.5'); process.exit(0); }
+if (!/gap-/.test(args.at(-1))) await new Promise((r) => setTimeout(r, 7000));
+fs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt', '1\\n00:00:00,000 --> 00:00:05,900\\nA long answer.\\n');
+`,
+  );
+  const model = path.join(f.root, "model.bin");
+  await writeFile(model, "model");
+  f.request.source = { kind: "local", value: aiff };
+  f.request.transcriptFile = null;
+  f.request.policy = { ...f.request.policy, asr: "local", extractTimeoutMs: 5000, asrTimeoutMs: 30000 };
+  await writeFile(f.args.request, jsonBytes(f.request));
+  const result = await prepare(
+    { ...f.args, "local-asr-executable": cpu, "local-asr-model": model },
+    { asrPreferencePath: path.join(f.root, "no-preference.json") },
+  );
+  assert.equal(result.status, "ok");
+  assert.ok(result.issues.some((i) => i.code === "PLAYBACK_MEDIA_TRANSCODED"));
+  const manifest = (await readJson(path.join(f.work, "manifest.json"))).data;
+  assert.equal(path.basename(manifest.mediaPath), "playback.m4a");
+});
 
 test("local ASR coverage: a stretch the second pass also leaves empty and extra audio tracks are reported", async (t) => {
   const { f, result } = await gapFixture(t, "");

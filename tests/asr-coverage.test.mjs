@@ -8,6 +8,9 @@ import {
   loneSignOffs,
   untranscribedSound,
 } from "../lib/asr-coverage.mjs";
+import { fillUntranscribedGaps, retryRanges } from "../lib/asr-gap-fill.mjs";
+import { parseUserTranscript } from "../lib/ingest-worker.mjs";
+import { fakeTool } from "./fake-tool.mjs";
 
 // 16 kHz mono s16le, written like FFmpeg to a pipe: a LIST chunk and no final data size.
 function pipeWav(parts) {
@@ -93,4 +96,95 @@ test("a lone sign-off is suspect only when stretched over a long or silent span"
   ];
   assert.deepEqual(loneSignOffs(segments, activity), [0, 1]);
   assert.deepEqual(loneSignOffs(segments, null), [0]);
+});
+
+test("retry ranges stay inside the decoded audio and are split into bounded parts", () => {
+  assert.deepEqual(retryRanges([{ startMs: 1500, endMs: 7600 }], 7501), [
+    { startMs: 1500, endMs: 7501 },
+  ]);
+  assert.deepEqual(retryRanges([{ startMs: 8000, endMs: 9000 }], 7501), []);
+  assert.deepEqual(retryRanges([{ startMs: 0, endMs: 700000 }], 800000), [
+    { startMs: 0, endMs: 300000 },
+    { startMs: 300000, endMs: 600000 },
+    { startMs: 600000, endMs: 700000 },
+  ]);
+});
+
+// A fake Whisper: the clip's file name decides its answer.
+async function gapRun(t, wav, script, gaps, segments, options = {}) {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "asr-gap-fill-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "asr-input.wav");
+  await writeFile(file, wav);
+  const executable = await fakeTool(
+    path.join(dir, "fake-asr"),
+    `import fs from 'node:fs';
+const args = process.argv.slice(2);
+const clip = args.at(-1);
+const out = args[args.indexOf('--output-file') + 1] + '.srt';
+${script}`,
+  );
+  const activity = await audioActivity(file);
+  return fillUntranscribedGaps({
+    segments,
+    gaps:
+      gaps ??
+      untranscribedSound(segments, activity.active, {
+        durationMs: Math.floor(activity.samples / 16),
+      }),
+    wavPath: file,
+    modelPath: path.join(dir, "model.bin"),
+    executable,
+    backend: "cpu",
+    workDir: dir,
+    timeoutMs: 20000,
+    maxBytes: 1 << 20,
+    signal: new AbortController().signal,
+    parseSrt: (raw) => parseUserTranscript(raw, ".srt"),
+    ...options,
+  });
+}
+
+test("a skipped stretch that runs to the end of the audio is retried", async (t) => {
+  // 7.501 s of tone: the last 100 ms frame is short, and the stretch ends with the audio.
+  const result = await gapRun(
+    t,
+    pipeWav([[7.501, 0.3]]),
+    "fs.writeFileSync(out, '1\\n00:00:00,200 --> 00:00:01,000\\nTail words.\\n');",
+    null,
+    [{ startMs: 0, endMs: 1000, text: "Start.", speaker: null }],
+  );
+  assert.deepEqual(result.audit.retried, [
+    { startMs: 1500, endMs: 7501, segments: 1 },
+  ]);
+  assert.deepEqual(
+    result.segments.map((s) => [s.startMs, s.endMs, s.text]),
+    [
+      [0, 1000, "Start."],
+      [1700, 2500, "Tail words."],
+    ],
+  );
+});
+
+test("speech recovered from earlier windows is kept when a later window fails", async (t) => {
+  // The whole-stretch pass hears nothing, window 0 hears words, window 1 never answers.
+  const result = await gapRun(
+    t,
+    pipeWav([[24, 0.3]]),
+    `if (/-w1\\.wav$/.test(clip)) await new Promise((r) => setTimeout(r, 10000));
+fs.writeFileSync(out, /-w0\\.wav$/.test(clip) ? '1\\n00:00:00,500 --> 00:00:02,000\\nRecovered words.\\n' : '');`,
+    [{ startMs: 1500, endMs: 24000, soundMs: 22500 }],
+    [{ startMs: 0, endMs: 1000, text: "Start.", speaker: null }],
+    { timeoutMs: 3000 },
+  );
+  assert.equal(result.audit.status, "partial");
+  assert.equal(result.audit.failure, "TIMEOUT");
+  assert.deepEqual(result.audit.retried, [
+    { startMs: 1500, endMs: 24000, segments: 1, windows: 2, failure: "TIMEOUT" },
+  ]);
+  assert.deepEqual(
+    result.segments.map((s) => s.text),
+    ["Start.", "Recovered words."],
+  );
+  assert.deepEqual(result.added, [1]);
 });
