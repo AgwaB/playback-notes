@@ -159,6 +159,21 @@ test("podcast transcripts carry the speaker until it changes (Podcasting 2.0 VTT
     ).map((s) => s.speaker),
     ["Ben", "David", "Ben", "David"],
   );
+  // A name opening a single cue is unconfirmed: it keeps its text and ends the previous
+  // speaker's turn instead of being attributed to them.
+  assert.deepEqual(
+    parseUserTranscript(
+      "Alice: First question.\n\nBob: My answer.\n\nMore from Bob.\n\nAlice: Thank you.\n",
+      ".txt",
+      { podcast: true },
+    ).map((s) => [s.speaker, s.text]),
+    [
+      ["Alice", "First question."],
+      [null, "Bob: My answer."],
+      [null, "More from Bob."],
+      ["Alice", "Thank you."],
+    ],
+  );
   // Outside podcasts, a user's SRT keeps "Name:" as text and VTT voices do not carry over.
   assert.equal(parseUserTranscript(srt(cards), ".srt")[0].text, cards[0]);
   assert.deepEqual(
