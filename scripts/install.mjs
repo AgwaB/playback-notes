@@ -24,6 +24,7 @@ import { AppError, exists, issue } from "../lib/io.mjs";
 const PARTS = [
   "SKILL.md",
   "README.md",
+  "LICENSE",
   "package.json",
   "package-lock.json",
   "lib",

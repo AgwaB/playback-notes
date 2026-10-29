@@ -94,3 +94,7 @@ If you don't name the formats, the agent asks which you want: HTML, Markdown, PD
 Reports are saved in `.playback-notes/reports/` inside the folder where you run your agent, unless you name another folder. Private working files go in `.playback-notes/work/`. The folder is git-ignored, and each run gets its own job and report revision, so repeated runs never overwrite each other.
 
 Afterwards, keep asking about the source (“What exactly did they say about X?”). The agent answers from the same transcript and cites the moments it relies on.
+
+## License
+
+[MIT](LICENSE)

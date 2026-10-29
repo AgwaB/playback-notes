@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Host-agent video evidence to grounded HTML, Markdown and PDF",
+  "license": "MIT",
   "engines": {
     "node": "^24.15.0 || >=26.0.0"
   },
