@@ -387,6 +387,20 @@ test("AIFF audio gets an AAC playback copy; cues out of order are sorted; no emp
   assert.ok(!(await readdir(work)).some((name) => name.startsWith("ingest-")));
 });
 
+test("a new extraction removes extraction folders a killed run left behind", async (t) => {
+  const f = await acquisition(t);
+  const left = path.join(f.work, "ingest-AbC123");
+  await mkdir(path.join(left, "asr-gaps-XyZ789"), { recursive: true });
+  await writeFile(path.join(left, "asr-input.wav"), "decoded audio of a killed run");
+  const keep = path.join(f.work, "ingest-notes");
+  await mkdir(keep);
+  const prepared = await prepare(f.args);
+  assert.equal(prepared.status, "ok");
+  const names = await readdir(f.work);
+  assert.ok(!names.includes("ingest-AbC123"));
+  assert.ok(names.includes("ingest-notes"), "only extraction folder names are removed");
+});
+
 test("audio length comes from decoding: a cut-short file is corrected, a header-only one refused", async (t) => {
   const f = await acquisition(t);
   const mp3 = path.join(f.root, "full.mp3");
