@@ -10,7 +10,7 @@ import {
   runLocalTool,
 } from "../lib/ingest-worker.mjs";
 import { parseSourceUrl } from "../lib/network.mjs";
-import { extractYouTubeVideoId } from "@steipete/summarize-core/content/url";
+import { youtubeVideoId as extractYouTubeVideoId } from "../lib/youtube-id.mjs";
 
 /**
  * Classify a caption-acquisition outcome the way yt-dlp/prepublish canaries do: the fixes
