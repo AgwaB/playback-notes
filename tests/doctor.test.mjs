@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { diagnose, doctorResult, installCommands } from "../scripts/doctor.mjs";
 
 const NOW = Date.UTC(2026, 10, 3);
@@ -14,6 +17,7 @@ function machine({
   outputs = {},
   env = {},
   text = {},
+  dirs = {},
   nodeVersion = "24.16.0",
 }) {
   const set = new Set(files);
@@ -33,6 +37,7 @@ function machine({
       if (file in text) return text[file];
       throw new Error("ENOENT");
     },
+    list: (dir) => dirs[dir] ?? [],
   });
 }
 const tool = (report, name) => report.tools.find((t) => t.name === name);
@@ -58,8 +63,8 @@ test("install commands merge per package manager, once each, in a stable order",
       { winget: ["yt-dlp.yt-dlp"] },
     ]),
     [
-      "winget install --id Gyan.FFmpeg -e",
-      "winget install --id yt-dlp.yt-dlp -e",
+      "winget install --id Gyan.FFmpeg -e --source winget",
+      "winget install --id yt-dlp.yt-dlp -e --source winget",
     ],
   );
   assert.deepEqual(
@@ -93,7 +98,7 @@ test("Windows: each choice says what it lacks and one install for it; found tool
   assert.equal(tool(report, "packages").status, "ok");
   assert.equal(
     tool(report, "ffmpeg").install,
-    "winget install --id Gyan.FFmpeg -e",
+    "winget install --id Gyan.FFmpeg -e --source winget",
   );
   const { features, flags } = report;
   // ffmpeg and ffprobe come from one package: one command.
@@ -101,14 +106,14 @@ test("Windows: each choice says what it lacks and one install for it; found tool
     for: "a local file or a direct media link",
     ready: false,
     missing: ["ffmpeg", "ffprobe"],
-    install: ["winget install --id Gyan.FFmpeg -e"],
+    install: ["winget install --id Gyan.FFmpeg -e --source winget"],
   });
   assert.deepEqual(features["youtube-captures"].install, [
-    "winget install --id Gyan.FFmpeg -e",
+    "winget install --id Gyan.FFmpeg -e --source winget",
   ]);
   assert.equal(features.pdf.ready, true, "Edge serves PDF");
   assert.deepEqual(features["slide-translation"].install, [
-    "winget install --id UB-Mannheim.TesseractOCR -e",
+    "winget install --id UB-Mannheim.TesseractOCR -e --source winget",
   ]);
   assert.equal(
     flags.browser,
@@ -122,17 +127,17 @@ test("Windows: each choice says what it lacks and one install for it; found tool
   );
   assert.match(
     warning.message,
-    /local-media \(a local file or a direct media link\) needs ffmpeg, ffprobe; install: winget install --id Gyan\.FFmpeg -e/,
+    /local-media \(a local file or a direct media link\) needs ffmpeg, ffprobe; install: winget install --id Gyan\.FFmpeg -e --source winget/,
   );
   assert.match(warning.message, /choosing that option approves it/);
   assert.match(
     warning.message,
-    /open a new terminal so PATH picks the tools up/,
+    /ffmpeg reported not-visible needs the agent restarted/,
   );
   assert.doesNotMatch(warning.message, /pdf/);
 });
 
-test("Windows: tools winget just installed are found, and ffmpeg outside this terminal's PATH says to reopen it", () => {
+test("Windows: tools winget just installed are found, and ffmpeg outside this agent's PATH says to restart it", () => {
   const report = machine({
     platform: "win32",
     env: {
@@ -156,9 +161,12 @@ test("Windows: tools winget just installed are found, and ffmpeg outside this te
   assert.equal(ffmpeg.status, "not-visible");
   assert.match(
     ffmpeg.note,
-    /this terminal's PATH does not include it yet; open a new terminal/,
+    /PATH here does not include it yet.*Restart the agent/,
   );
-  assert.equal(ffmpeg.install, "open a new terminal so PATH includes ffmpeg");
+  assert.equal(
+    ffmpeg.install,
+    "restart the agent (close and reopen its terminal or app) so PATH includes ffmpeg",
+  );
   assert.equal(tool(report, "ffprobe").status, "missing");
   assert.equal(tool(report, "yt-dlp").status, "ok");
   assert.equal(
@@ -171,6 +179,78 @@ test("Windows: tools winget just installed are found, and ffmpeg outside this te
     report.flags.tesseract,
     '--ocr-engine tesseract --ocr-executable "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"',
   );
+});
+
+test("Windows: winget is found by running it, and its portable packages are found outside PATH", () => {
+  const local = "C:\\Users\\me\\AppData\\Local";
+  const packages = `${local}\\Microsoft\\WinGet\\Packages`;
+  const ffmpegDir = `${packages}\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe`;
+  const ytDir = `${packages}\\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe`;
+  const report = machine({
+    platform: "win32",
+    // winget lives in WindowsApps as an App Execution Alias, which is not a readable file.
+    env: { Path: `C:\\Windows\\System32;${local}\\Microsoft\\WindowsApps`, LOCALAPPDATA: local },
+    dirs: {
+      [packages]: [
+        "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe",
+        "yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe",
+        "Other.Tool_Microsoft.Winget.Source_8wekyb3d8bbwe",
+      ],
+      [ffmpegDir]: ["ffmpeg-9.0.2-full_build"],
+    },
+    files: [
+      `${ffmpegDir}\\ffmpeg-9.0.2-full_build\\bin\\ffmpeg.exe`,
+      `${ffmpegDir}\\ffmpeg-9.0.2-full_build\\bin\\ffprobe.exe`,
+      `${ytDir}\\yt-dlp.exe`,
+    ],
+    outputs: { "winget.exe": "v1.29.380\n", [`${ytDir}\\yt-dlp.exe`]: "2026.10.26\n" },
+  });
+  assert.equal(report.packageManager.found, true);
+  assert.doesNotMatch(doctorResult(report).issues.at(-1).message, /App Installer/);
+  assert.equal(tool(report, "ffmpeg").status, "not-visible");
+  assert.equal(tool(report, "ffprobe").status, "not-visible");
+  // A tool passed by path works at once, without a restart.
+  assert.equal(tool(report, "yt-dlp").status, "ok");
+  assert.equal(report.flags["yt-dlp"], `--yt-dlp-executable "${ytDir}\\yt-dlp.exe"`);
+});
+
+test("Windows: an old yt-dlp is updated the way it was installed", () => {
+  const update = (file) =>
+    tool(
+      machine({ platform: "win32", env: { Path: path.win32.dirname(file) }, files: [file], outputs: { [file]: "2026.02.01\n" } }),
+      "yt-dlp",
+    ).install;
+  assert.equal(
+    update("C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\yt-dlp.exe"),
+    "winget upgrade --id yt-dlp.yt-dlp -e --source winget",
+  );
+  assert.equal(
+    update("C:\\Python313\\Scripts\\yt-dlp.exe"),
+    "python -m pip install -U yt-dlp",
+  );
+  assert.equal(
+    update("C:\\tools\\yt-dlp.exe"),
+    'run "C:\\tools\\yt-dlp.exe" -U (the release build updates itself)',
+  );
+});
+
+test("a preference file saved by Windows PowerShell 5.1 (byte-order mark or UTF-16) is read", async (t) => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "doctor 환경 "));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  await mkdir(path.join(home, ".agents"));
+  const executable = path.join(home, "whisper-cli"), model = path.join(home, "모델.bin");
+  await writeFile(executable, "");
+  await writeFile(model, "");
+  const json = JSON.stringify({ localAsrExecutable: executable, localAsrModel: model });
+  for (const bytes of [
+    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(json)]),
+    Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(json, "utf16le")]),
+  ]) {
+    await writeFile(path.join(home, ".agents", "playback-notes-asr.json"), bytes);
+    const report = diagnose({ home, probe: () => ({ ok: false, out: "" }) });
+    assert.equal(tool(report, "whisper").status, "ok");
+    assert.equal(tool(report, "whisper").model, model);
+  }
 });
 
 test("macOS: one approval sets transcription up (Homebrew, the model and the preference file); an old yt-dlp is updated", () => {

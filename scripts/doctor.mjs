@@ -6,10 +6,10 @@
 import nodePath from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { isMain, optionsFor, result, runCli } from "../lib/cli.mjs";
-import { issue } from "../lib/io.mjs";
+import { issue, jsonText } from "../lib/io.mjs";
 import { SAFE_PATH } from "../lib/runtime.mjs";
 
 const SKILL_DIR = fileURLToPath(new URL("..", import.meta.url));
@@ -48,9 +48,10 @@ const PACKAGES = {
     node: { winget: ["OpenJS.NodeJS.LTS"] },
     ffmpeg: { winget: ["Gyan.FFmpeg"] },
     "yt-dlp": { winget: ["yt-dlp.yt-dlp"] },
-    "yt-dlp-update": { run: ["winget upgrade --id yt-dlp.yt-dlp -e"] },
+    "yt-dlp-update": { run: ["winget upgrade --id yt-dlp.yt-dlp -e --source winget"] },
     whisper: { run: ['the commands in references/windows.md, "Local transcription" (they also write the preference file)'] },
-    browser: { winget: ["Google.Chrome"] },
+    // winget's catalogue lists Chrome's stable channel only as the EXE installer.
+    browser: { winget: ["Google.Chrome.EXE"] },
     tesseract: { winget: ["UB-Mannheim.TesseractOCR"] },
     manager: { run: ["winget (App Installer from the Microsoft Store)"] },
   },
@@ -74,7 +75,9 @@ export function installCommands(specs) {
   return [
     merged.brew.length && `brew install ${merged.brew.join(" ")}`,
     merged.cask.length && `brew install --cask ${merged.cask.join(" ")}`,
-    ...merged.winget.map((id) => `winget install --id ${id} -e`),
+    // --source winget: the IDs are the winget catalogue's, and the Microsoft Store source
+    // would first ask an agent's terminal to accept its terms.
+    ...merged.winget.map((id) => `winget install --id ${id} -e --source winget`),
     merged.apt.length && `sudo apt install ${merged.apt.join(" ")}`,
     merged.pipx.length && `pipx install ${merged.pipx.join(" ")}`,
     ...merged.run,
@@ -130,7 +133,15 @@ export function diagnose({
   skillDir = SKILL_DIR,
   probe = realProbe,
   exists = realExists,
-  readText = (file) => readFileSync(file, "utf8"),
+  // JSON saved by Windows PowerShell 5.1 has a byte-order mark or is UTF-16.
+  readText = (file) => jsonText(readFileSync(file)),
+  list = (dir) => {
+    try {
+      return readdirSync(dir);
+    } catch {
+      return [];
+    }
+  },
 } = {}) {
   const win = platform === "win32";
   const p = win ? nodePath.win32 : nodePath.posix;
@@ -140,12 +151,30 @@ export function diagnose({
   const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH");
   const userDirs = (env[pathKey] ?? "").split(win ? ";" : ":").filter(Boolean);
   const workerDirs = win ? userDirs : SAFE_PATH.split(":");
-  // Windows places winget's command links and Tesseract outside a terminal's PATH until
-  // it is reopened (or at all, for Tesseract).
+  // Windows places what winget just installed, and Tesseract, outside the PATH of programs
+  // that were already running (or outside any PATH, for Tesseract). winget links portable
+  // packages in WinGet\Links only where symbolic links are allowed (Developer Mode or an
+  // administrator); otherwise it adds the package folder under WinGet\Packages to PATH.
+  const wingetPackages =
+    env.LOCALAPPDATA && p.join(env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages");
+  const wingetDirs = (id) =>
+    wingetPackages
+      ? list(wingetPackages)
+          .filter((name) => name.startsWith(`${id}_`))
+          .flatMap((name) => {
+            const dir = p.join(wingetPackages, name);
+            return [
+              dir,
+              ...list(dir).flatMap((sub) => [p.join(dir, sub), p.join(dir, sub, "bin")]),
+            ];
+          })
+      : [];
   const installedDirs = win
     ? [
         env.LOCALAPPDATA &&
           p.join(env.LOCALAPPDATA, "Microsoft", "WinGet", "Links"),
+        ...wingetDirs("Gyan.FFmpeg"),
+        ...wingetDirs("yt-dlp.yt-dlp"),
         env.ProgramFiles && p.join(env.ProgramFiles, "Tesseract-OCR"),
         env["ProgramFiles(x86)"] &&
           p.join(env["ProgramFiles(x86)"], "Tesseract-OCR"),
@@ -181,7 +210,11 @@ export function diagnose({
     });
   };
   const manager = win ? "winget" : platform === "darwin" ? "brew" : "apt";
-  const managerFound = find(manager, [...userDirs, ...workerDirs]);
+  const managerFound =
+    find(manager, [...userDirs, ...workerDirs]) ??
+    // winget is an App Execution Alias: a link into a folder this account cannot read, so it
+    // is not seen as a file; running it is the check.
+    (win && probe(exe(manager), ["--version"]).ok ? exe(manager) : null);
 
   // Node.js: 24.15+ in the 24 line, or 26+ (25 is not supported).
   const [major, minor] = nodeVersion.split(".").map(Number);
@@ -223,11 +256,11 @@ export function diagnose({
     add(name, elsewhere ? "not-visible" : "missing", {
       path: elsewhere ?? file,
       ...(elsewhere && win
-        ? { fix: { run: [`open a new terminal so PATH includes ${name}`] } }
+        ? { fix: { run: [`restart the agent (close and reopen its terminal or app) so PATH includes ${name}`] } }
         : {}),
       note: elsewhere
         ? win
-          ? `Installed at ${elsewhere}, but this terminal's PATH does not include it yet; open a new terminal.`
+          ? `Installed at ${elsewhere}, but PATH here does not include it yet: programs started before the install, and what they start, keep the old PATH. Restart the agent (close and reopen its terminal or app).`
           : `Found at ${elsewhere}, but extraction only looks in ${workerDirs.join(", ")}; link it there or install it with the command shown.`
         : file
           ? "Found but it did not run."
@@ -248,10 +281,19 @@ export function diagnose({
         86400000
       : null;
     const outdated = ageDays !== null && ageDays > YT_DLP_MAX_AGE_DAYS;
+    // On Windows, update it the way it was installed: winget, pip, or the release build's
+    // own updater.
+    const update = !win
+      ? spec("yt-dlp-update")
+      : /\\WinGet\\/i.test(ytDlp)
+        ? spec("yt-dlp-update")
+        : /\\Scripts\\yt-dlp\.exe$/i.test(ytDlp)
+          ? { run: ["python -m pip install -U yt-dlp"] }
+          : { run: [`run "${ytDlp}" -U (the release build updates itself)`] };
     add("yt-dlp", outdated ? "outdated" : "ok", {
       path: ytDlp,
       version,
-      fix: outdated ? spec("yt-dlp-update") : null,
+      fix: outdated ? update : null,
       note: outdated
         ? `About ${Math.round(ageDays)} days old; YouTube usually refuses old versions. Update it the way it was installed.`
         : null,
@@ -460,7 +502,7 @@ export function doctorResult(report) {
         "FEATURES_NEED_INSTALL",
         `Not ready here: ${unready
           .map(([key, f]) => `${key} (${f.for}) needs ${f.missing.join(", ")}; install: ${f.install.join("; ")}`)
-          .join(" | ")}. Name the install in the option that needs it; choosing that option approves it. Run all its commands at once${report.platform === "win32" ? ", open a new terminal so PATH picks the tools up" : ""}, then run doctor again.${report.packageManager.found ? "" : ` The install commands need ${report.packageManager.install}.`}`,
+          .join(" | ")}. Name the install in the option that needs it; choosing that option approves it. Run all its commands at once, then run doctor again${report.platform === "win32" ? "; ffmpeg reported not-visible needs the agent restarted (close and reopen its terminal or app) before it can be used, while tools passed by path work at once" : ""}.${report.packageManager.found ? "" : ` The install commands need ${report.packageManager.install}.`}`,
         "warning",
       ),
     );

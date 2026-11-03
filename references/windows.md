@@ -25,7 +25,7 @@ Windows cannot rename a junction over an existing one. When relinking, the insta
 Existing ordinary directories are not replaced. Installed files are read-only, but directory ACLs are not changed,
 so this is not a security boundary against file additions or replacements by the same account.
 
-- `node scripts\doctor.mjs` lists which tools are found and the winget command for each missing one (`winget install --id Gyan.FFmpeg -e` for ffmpeg and ffprobe, `yt-dlp.yt-dlp`, `UB-Mannheim.TesseractOCR`, `Google.Chrome`; Edge also works for PDF). Open a new terminal after installing so PATH picks the tool up.
+- `node scripts\doctor.mjs` lists which tools are found and the winget command for each missing one (`winget install --id Gyan.FFmpeg -e --source winget` for ffmpeg and ffprobe, `yt-dlp.yt-dlp`, `UB-Mannheim.TesseractOCR`, `Google.Chrome.EXE`; the preinstalled Edge also works for PDF). It finds what winget just installed and passes yt-dlp, Tesseract and the browser by path, so they work at once. ffmpeg is looked up on PATH, which programs started before the install (the agent, and every terminal it opens) keep unchanged: restart the agent after installing ffmpeg.
 - Local media and scene processing: `ffmpeg.exe` and `ffprobe.exe` on PATH.
 - Requested PDF output: pass an installed Chrome/Chromium `.exe` with `--browser-executable`. Default HTML/Markdown output does not require a browser.
 - Optional ASR, OCR and YouTube media: explicitly specify existing whisper.cpp/model, tesseract and yt-dlp `.exe` paths ([local transcription setup](#local-transcription)).
