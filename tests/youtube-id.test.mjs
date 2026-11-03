@@ -15,10 +15,12 @@ test("HackerTube watch links resolve to the YouTube video ID", () => {
     youtubeVideoId("https://hackertube.org/watch/ne99laPUxN4"),
     "ne99laPUxN4",
   );
-  assert.equal(
-    youtubeVideoId("https://www.hackertube.org/watch/ne99laPUxN4/"),
-    "ne99laPUxN4",
-  );
+  for (const href of [
+    "https://www.hackertube.org/watch/ne99laPUxN4/",
+    "https://hackertube.org/watch/ne99laPUxN4?t=30",
+    "http://hackertube.org/watch/ne99laPUxN4",
+  ])
+    assert.equal(youtubeVideoId(href), "ne99laPUxN4", href);
 });
 
 test("other HackerTube pages and unsafe forms are not videos", () => {
@@ -27,7 +29,8 @@ test("other HackerTube pages and unsafe forms are not videos", () => {
     "https://hackertube.org/about",
     "https://hackertube.org/watch/short",
     "https://hackertube.org/watch/ne99laPUxN4/extra",
-    "http://hackertube.org/watch/ne99laPUxN4",
+    "https://hackertube.org:8443/watch/ne99laPUxN4",
+    "ftp://hackertube.org/watch/ne99laPUxN4",
     "https://user:pw@hackertube.org/watch/ne99laPUxN4",
     "https://hackertube.org.evil.example/watch/ne99laPUxN4",
     "not a url",

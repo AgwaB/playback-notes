@@ -36,7 +36,7 @@ Andrej Karpathy's [“[1hr Talk] Intro to Large Language Models”](https://www.
 
 ## Usage
 
-Send your agent a YouTube or Apple Podcasts **episode** link, or an audio/video file or direct URL. You can also supply an SRT, VTT or TXT transcript.
+Send your agent a YouTube link, a video post on X, an Apple Podcasts **episode** link, or an audio/video file or direct URL. You can also supply an SRT, VTT or TXT transcript.
 
 - **Briefing** — key conclusions and why they hold.
 - **Deep-dive** — detailed explanations, examples and caveats.
@@ -87,6 +87,28 @@ This installs a read-only copy in `~/.agents/skills/playback-notes`, where Codex
 </details>
 
 On Windows, follow the [PowerShell setup](references/windows.md); on WSL, the [WSL guide](references/wsl.md).
+
+### Optional: local transcription
+
+Recordings without captions need speech-to-text on your computer: every video post on X, some YouTube videos, podcasts without a published transcript, and your own files. The agent asks before transcribing and never installs anything on its own. On macOS with Homebrew:
+
+```bash
+brew install whisper.cpp ffmpeg
+mkdir -p ~/.agents/models
+curl -L -o ~/.agents/models/ggml-large-v3-turbo.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin  # 1.6 GB
+```
+
+Then save their locations in `~/.agents/playback-notes-asr.json`, with your own home folder:
+
+```json
+{
+  "localAsrExecutable": "/opt/homebrew/bin/whisper-cli",
+  "localAsrModel": "/Users/you/.agents/models/ggml-large-v3-turbo.bin"
+}
+```
+
+On Intel Macs Homebrew uses `/usr/local/bin`. `ggml-small.bin` (490 MB, same address) is faster but makes more mistakes, especially with names. On Linux build [whisper.cpp](https://github.com/ggml-org/whisper.cpp); on Windows see the [PowerShell setup](references/windows.md).
 
 ## Token usage
 

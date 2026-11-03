@@ -267,3 +267,43 @@ test("an explicit dense interval that exhausts the cap discloses missing late fo
   assert.equal(result.raw.visualOcr.coverage.complete, false);
   assert.equal(warning(result, "FRAMES_TRUNCATED"), true);
 });
+
+test("a video without a sound track is not transcribed: frames alone are its evidence, or the cause is named", async (t) => {
+  const { writeFile } = await import("node:fs/promises");
+  // Present but never run: there is no audio to give them.
+  const asr = {
+    localAsrExecutable: path.join(
+      root,
+      `unused-whisper${process.platform === "win32" ? ".exe" : ""}`,
+    ),
+    localAsrModel: path.join(root, "unused-model.bin"),
+  };
+  await writeFile(asr.localAsrExecutable, "#!/bin/sh\nexit 9\n", { mode: 0o755 });
+  await writeFile(asr.localAsrModel, "placeholder");
+  const silentRequest = (visual) => ({
+    source: { kind: "local", value: builds },
+    policy: { asr: "local", visual, extractTimeoutMs: 30000 },
+  });
+  const result = await extractSource(silentRequest("frames"), {
+    workDir: path.join(root, "silent-frames"),
+    ...asr,
+  });
+  assert.equal(result.extraction.method, "none");
+  assert.deepEqual(result.segments, []);
+  assert.ok(result.frames.length > 0);
+  assert.ok(warning(result, "NO_AUDIO_TRACK"));
+  await t.test("without frames the missing sound is the named cause", async () => {
+    await assert.rejects(
+      extractSource(silentRequest("off"), {
+        workDir: path.join(root, "silent-asr"),
+        ...asr,
+      }),
+      (error) => {
+        assert.equal(error.code, "SOURCE_UNSUPPORTED");
+        assert.equal(error.detail, "no-decodable-audio");
+        assert.match(error.message, /without a sound track/);
+        return true;
+      },
+    );
+  });
+});

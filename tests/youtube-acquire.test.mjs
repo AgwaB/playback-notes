@@ -1180,8 +1180,8 @@ test("round 5: the network failure cause is per request; yt-dlp is fingerprinted
   });
   await assert.rejects(
     () => refused.text(watchUrl, 1000),
-    (e) => e.code === "SOURCE_ACCESS_DENIED",
-    "a remote refusal is not an environment problem",
+    (e) => e.code === "SOURCE_ACCESS_DENIED" && e.detail === "connection-failed",
+    "a remote refusal is not an environment problem; its cause says to retry",
   );
   // Cache identity covers the yt-dlp executable whenever frames can use it.
   const root = await tmp("fp-");

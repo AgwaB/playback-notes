@@ -147,12 +147,13 @@ test("supplied subtitle errors remain strict and do not create native ASR diagno
   assert.ok(!(await readdir(f.work)).includes("raw"));
 });
 
-test("ASR duration overruns preserve every cue as untimed without clipping or dropping text", async (t) => {
+test("an ASR end within Whisper's last 30-second window becomes the audio's end; later overruns stay untimed and no text is dropped", async (t) => {
   const raw = "1\n00:00:00,100 --> 00:00:00,700\nFirst ok🙂\n\n" +
     "2\n00:00:01,800 --> 00:00:02,500\nEnd overrun\n\n" +
     "3\n00:00:02,500 --> 00:00:03,000\nBoth overrun\n\n" +
     "4\n00:00:01,200 --> 00:00:01,500\nLater cue order\n\n" +
-    "5\n00:00:01,900 --> 00:00:02,000\nExact end\n";
+    "5\n00:00:01,900 --> 00:00:02,000\nExact end\n\n" +
+    "6\n00:00:01,950 --> 00:00:32,100\nFar overrun\n";
   const f = await fixture(t, raw);
   const { stdout } = await f.run();
   assert.equal(JSON.parse(stdout).status, "ok");
@@ -160,15 +161,17 @@ test("ASR duration overruns preserve every cue as untimed without clipping or dr
   const extraction = JSON.parse(await readFile(path.join(f.work, "raw/extraction.json"), "utf8"));
   assert.equal(evidence.source.durationMs, 2000);
   assert.deepEqual(evidence.segments.map(({ startMs, endMs, text }) => [startMs, endMs, text]), [
-    [100, 700, "First ok🙂"], [null, null, "End overrun"], [null, null, "Both overrun"],
-    [1200, 1500, "Later cue order"], [1900, 2000, "Exact end"],
+    [100, 700, "First ok🙂"], [1800, 2000, "End overrun"], [null, null, "Both overrun"],
+    [1200, 1500, "Later cue order"], [1900, 2000, "Exact end"], [null, null, "Far overrun"],
   ]);
   assert.equal(extraction.localAsr, raw);
   assert.deepEqual(extraction.localAsrTiming, { sourceDurationMs: 2000, rejectedIntervals: [
-    { segmentIndex: 1, startMs: 1800, endMs: 2500, reason: "source-duration-overrun" },
     { segmentIndex: 2, startMs: 2500, endMs: 3000, reason: "source-duration-overrun" },
-  ] });
+    { segmentIndex: 5, startMs: 1950, endMs: 32100, reason: "source-duration-overrun" },
+  ], clampedEnds: [{ segmentIndex: 1, endMs: 2500 }] });
   assert.equal(evidence.extraction.timing, "partial");
-  assert.ok(evidence.extraction.warnings.some(({ code }) => code === "TIMING_UNAVAILABLE"));
+  const codes = evidence.extraction.warnings.map(({ code }) => code);
+  assert.ok(codes.includes("TIMING_UNAVAILABLE"));
+  assert.ok(codes.includes("ASR_END_CLAMPED"));
   assert.ok(!(await readdir(path.join(f.work, "raw"))).includes("asr-failures"));
 });

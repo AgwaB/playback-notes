@@ -517,6 +517,88 @@ test("the invented-phrase pattern flags credits and outros, not ordinary speech 
     assert.ok(!re.test(t), t);
 });
 
+test("sound descriptions, lone sound words and phrase loops are suspect ASR text; ordinary speech is not", async () => {
+  const { asrSuspectText } = await import("../lib/ingest-worker.mjs");
+  for (const t of [
+    "*Sexy music*",
+    "[Music]",
+    "(upbeat music)",
+    "♪♪♪",
+    "[Music] [Applause]",
+    "Música",
+    "Music.",
+    "음악",
+    "KILLIN' ME ".repeat(20),
+    "ありがとう".repeat(8),
+    "Thanks for watching!",
+  ])
+    assert.ok(asrSuspectText(t), t);
+  for (const t of [
+    "Oh, oh, oh, oh, oh, oh.",
+    "no no no no",
+    "The [Music] tag is used by captions.",
+    "We use (parentheses) here",
+    "She said *really* loudly",
+    "I love music",
+    "음악을 들어요",
+    "ㅋㅋㅋㅋㅋㅋㅋㅋ",
+    "so the model, the model, the model is",
+  ])
+    assert.ok(!asrSuspectText(t), t);
+  // Bounded patterns: long ordinary text is checked quickly.
+  const long = "the model reads every chunk and writes notes ".repeat(500);
+  const started = performance.now();
+  assert.equal(asrSuspectText(long.slice(0, 20000)), false);
+  assert.ok(performance.now() - started < 500);
+});
+
+test("over-budget downloads and timed-out ASR name the limit to raise", async () => {
+  const big = createSourceNetwork({
+    maxBytes: 10,
+    lookup: publicLookup,
+    transport: async () => new Response("x".repeat(64)),
+  });
+  await assert.rejects(big.consume("https://example.com/a.mp4", () => {}), {
+    code: "RESOURCE_LIMIT",
+    detail: "download-over-budget",
+  });
+  const declared = createSourceNetwork({
+    maxBytes: 10,
+    lookup: publicLookup,
+    transport: async () =>
+      new Response("x", { headers: { "content-length": "64" } }),
+  });
+  await assert.rejects(declared.consume("https://example.com/a.mp4", () => {}), {
+    code: "RESOURCE_LIMIT",
+    detail: "download-over-budget",
+  });
+  const model = path.join(root, "mock-model.bin");
+  await writeFile(model, "offline test placeholder, not a speech model");
+  const executable = await fakeTool(
+    path.join(root, "mock-whisper-stuck"),
+    "if (process.argv.includes('--version')) { console.log('whisper.cpp version: 1.9.5'); process.exit(0); }\nsetTimeout(() => {}, 60000);\n",
+  );
+  await assert.rejects(
+    extractSource(
+      request({
+        transcriptFile: null,
+        policy: { ...basePolicy, asr: "local", asrTimeoutMs: 1500 },
+      }),
+      {
+        workDir: path.join(jobs, "asr-timeout"),
+        localAsrExecutable: executable,
+        localAsrModel: model,
+      },
+    ),
+    (error) => {
+      assert.equal(error.code, "TIMEOUT");
+      assert.equal(error.detail, "asr-timeout");
+      assert.match(error.message, /asrTimeoutMs/);
+      return true;
+    },
+  );
+});
+
 test("fingerprint hashes media/transcript content and parser format, ignoring report-only options", async () => {
   const a = await ingestionFingerprint(request());
   assert.match(a, /^[a-f0-9]{64}$/);
