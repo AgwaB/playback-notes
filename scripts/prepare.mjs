@@ -8,6 +8,7 @@ import {
   atomicWrite,
   fileHash,
   jsonBytes,
+  jsonText,
   readJson,
   sha256,
   withLock,
@@ -97,7 +98,7 @@ export async function preferredGpu(options, request, preferencePaths) {
     const found = await existingPreference(preferencePaths);
     if (!found || found.info.size > 64 * 1024) return options;
     const preferencePath = found.path;
-    const preference = JSON.parse(await readFile(preferencePath, "utf8"));
+    const preference = JSON.parse(jsonText(await readFile(preferencePath)));
     const values = [preference.localAsrExecutable, preference.localAsrModel, preference.localAsrGpuExecutable];
     if (!values.every((value) => typeof value === "string" && path.isAbsolute(value))) return options;
     const normalize = (value) => {

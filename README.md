@@ -108,7 +108,7 @@ Then save their locations in `~/.agents/playback-notes-asr.json`, with your own 
 }
 ```
 
-On Intel Macs Homebrew uses `/usr/local/bin`. `ggml-small.bin` (490 MB, same address) is faster but makes more mistakes, especially with names. On Linux build [whisper.cpp](https://github.com/ggml-org/whisper.cpp); on Windows see the [PowerShell setup](references/windows.md).
+On Intel Macs Homebrew uses `/usr/local/bin`. `ggml-small.bin` (490 MB, same address) is faster but makes more mistakes, especially with names. On Linux build [whisper.cpp](https://github.com/ggml-org/whisper.cpp); on Windows see the [PowerShell setup](references/windows.md#local-transcription).
 
 ## Token usage
 

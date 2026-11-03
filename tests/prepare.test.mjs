@@ -958,10 +958,38 @@ test("the ASR preference falls back to the pre-rename file and the new file take
     (await preferredGpu(options, local, [current, legacy]))["local-asr-gpu-executable"],
     path.join(home, "current-gpu"),
   );
+  // As Windows PowerShell 5.1 saves it: Set-Content -Encoding UTF8 adds a byte-order mark,
+  // `>` and Out-File write UTF-16LE.
+  const gpu = path.join(home, "그래픽 gpu");
+  for (const bytes of [
+    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(preference(gpu))]),
+    Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(preference(gpu), "utf16le")]),
+  ]) {
+    await writeFile(current, bytes);
+    assert.equal(
+      (await preferredGpu(options, local, [current, legacy]))["local-asr-gpu-executable"],
+      gpu,
+    );
+  }
   await writeFile(current, "invalid json");
   assert.equal(
     (await preferredGpu(options, local, [current, legacy]))["local-asr-gpu-executable"],
     undefined,
     "an existing new preference is authoritative even when malformed",
   );
+});
+
+test("a request saved by Windows PowerShell 5.1 (UTF-8 with a byte-order mark, or UTF-16LE) is read", async (t) => {
+  const f = await acquisition(t);
+  const json = JSON.stringify(f.request);
+  for (const [name, bytes] of [
+    ["utf8-bom", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(json)])],
+    ["utf16le", Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(json, "utf16le")])],
+  ]) {
+    await writeFile(f.args.request, bytes);
+    const read = await readJson(f.args.request);
+    assert.deepEqual(read.data, f.request, name);
+    const prepared = await prepare({ ...f.args, "work-dir": path.join(f.root, name) });
+    assert.equal(prepared.status, "ok", name);
+  }
 });

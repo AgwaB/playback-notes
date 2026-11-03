@@ -27,7 +27,7 @@ so this is not a security boundary against file additions or replacements by the
 
 - Local media and scene processing: `ffmpeg.exe` and `ffprobe.exe` on PATH.
 - Requested PDF output: pass an installed Chrome/Chromium `.exe` with `--browser-executable`. Default HTML/Markdown output does not require a browser.
-- Optional ASR, OCR and YouTube media: explicitly specify existing whisper.cpp/model, tesseract and yt-dlp `.exe` paths.
+- Optional ASR, OCR and YouTube media: explicitly specify existing whisper.cpp/model, tesseract and yt-dlp `.exe` paths ([local transcription setup](#local-transcription)).
 - For approved local ASR, specify an installed GPU build with `--local-asr-gpu-executable` if available. If the GPU cannot be used, processing uses the specified CPU executable. Prepare a GPU-compatible executable and required DLLs in advance; they are not installed automatically during processing.
 - `.cmd`/`.bat` wrappers are not executed. Tools and models are not installed automatically.
 - Windows ASR output is collected through a byte-limited named pipe. To support Korean paths, input is passed as an ASCII relative path, and the model is hardlinked or copied into the work directory. Models on another volume may require space for a copy.
@@ -35,7 +35,7 @@ so this is not a security boundary against file additions or replacements by the
 - Apple Vision OCR and the BotGuard sandbox are macOS-only. The Windows caption path uses the Android-app caption list.
 
 Supplied SRT/VTT/TXT transcripts can be UTF-8, Notepad's "Unicode" (UTF-16) or a legacy code page such as EUC-KR/CP949, which is detected from the file's bytes and reported with `TRANSCRIPT_ENCODING_DETECTED`; a file too short to detect must be re-saved as UTF-8.
-The skill writes UTF-8 without a byte-order mark. Windows PowerShell 5.1 reads such files in the ANSI code page by default, so read evidence, chunks and reports with `Get-Content -Raw -Encoding UTF8` (PowerShell 7 already defaults to UTF-8), and set `[Console]::OutputEncoding = [Text.Encoding]::UTF8` before capturing a script's output in a variable; output that is not captured is passed through unchanged.
+The skill writes UTF-8 without a byte-order mark. Windows PowerShell 5.1 reads such files in the ANSI code page by default, so read evidence, chunks and reports with `Get-Content -Raw -Encoding UTF8` (PowerShell 7 already defaults to UTF-8). Start a command that pipes a script's output (for example `scripts/read.mjs … | Select-Object`) or captures it in a variable with `[Console]::OutputEncoding = [Text.Encoding]::UTF8;`, or non-English text is silently garbled; output that is neither piped nor captured is passed through unchanged. JSON the agent saves with `Set-Content -Encoding UTF8`, `>` or `Out-File` (UTF-8 with a byte-order mark, or UTF-16) is accepted.
 Quote CLI paths that contain spaces or Korean characters. In JSON, write paths as `C:/Videos/sample.mp4` or
 `C:\\Videos\\sample.mp4`. Keep work and public output directories separate.
 
@@ -54,3 +54,31 @@ The older Xpdf `pdftotext` bundled with Git for Windows does not support `-bbox`
 Product PDF generation requires only Chrome.
 
 See [execution](execution.md) for the execution contract and the [support matrix](support-matrix.md) for platform-specific verification coverage and limitations.
+
+## Local transcription
+
+Video posts on X, YouTube videos without captions, podcasts without a published transcript and your own recordings need speech-to-text on this computer. The agent asks before transcribing and never installs anything on its own. whisper.cpp attaches Windows builds to its `b…` releases (not to `v…` releases); these commands use b5454. Write `curl.exe`: in Windows PowerShell 5.1, `curl` is `Invoke-WebRequest`.
+
+```powershell
+$asr = "$HOME\.agents\whisper"
+New-Item -ItemType Directory -Force $asr | Out-Null
+curl.exe -L -o "$asr\cpu.zip" https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip
+Expand-Archive -Force "$asr\cpu.zip" "$asr\cpu"
+curl.exe -L -o "$asr\ggml-large-v3-turbo.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin  # 1.6 GB
+# Only with an NVIDIA GPU (685 MB, CUDA runtime included; unpacking takes a few minutes):
+curl.exe -L -o "$asr\cuda.zip" https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-win-cuda-12.4.0-x64.zip
+Expand-Archive -Force "$asr\cuda.zip" "$asr\cuda"
+```
+
+Then save their locations in `$HOME\.agents\playback-notes-asr.json`:
+
+```powershell
+$prefs = [ordered]@{
+  localAsrExecutable = "$asr\cpu\Release\whisper-cli.exe"
+  localAsrModel = "$asr\ggml-large-v3-turbo.bin"
+}
+if (Test-Path "$asr\cuda\Release\whisper-cli.exe") { $prefs.localAsrGpuExecutable = "$asr\cuda\Release\whisper-cli.exe" }
+$prefs | ConvertTo-Json | Set-Content -Encoding UTF8 "$HOME\.agents\playback-notes-asr.json"
+```
+
+The GPU build needs a current NVIDIA driver; when the GPU cannot be used, the CPU build transcribes. Transcribing a YouTube video's audio instead of its automatic captions, and key-scene frames from YouTube, also need `yt-dlp.exe`; give the agent its full path. YouTube refuses an outdated yt-dlp (HTTP 403, `Cause: download-failed`): update it with `yt-dlp.exe -U` (release build) or `python -m pip install -U yt-dlp` (pip).
