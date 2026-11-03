@@ -61,6 +61,8 @@ npx skills add AgwaB/playback-notes -g
 
 **Both lines are required.** The first installs the skill with the [`skills` CLI](https://github.com/vercel-labs/skills) for the agents you pick, such as Claude Code, Codex and pi. The second installs its dependencies. In Windows PowerShell, use the [PowerShell commands](references/windows.md) instead.
 
+Your agent checks which optional tools are present (ffmpeg, yt-dlp, whisper.cpp, a browser for PDF, OCR) when it starts, tells you what a choice would need, and offers the install command for your system; nothing is installed without your OK. To run the check yourself: `node ~/.agents/skills/playback-notes/scripts/doctor.mjs`.
+
 To update or remove it:
 
 ```bash

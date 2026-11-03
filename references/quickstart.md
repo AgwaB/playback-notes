@@ -21,6 +21,12 @@ Substitute the user's actual source, mode, language and format choices; the URL 
 
 ## 2. Prepare, inspect, scaffold
 
+Run the tool check before asking the user anything (SKILL.md, step 1); it prints what is missing and the install command for this system, and installs nothing:
+
+```bash
+node "$SKILL/scripts/doctor.mjs"
+```
+
 ```bash
 node "$SKILL/scripts/prepare.mjs" --request "$JOB/request.json" --work-dir "$JOB" --check &&
 node "$SKILL/scripts/prepare.mjs" --request "$JOB/request.json" --work-dir "$JOB"
