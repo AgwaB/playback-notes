@@ -98,6 +98,26 @@
     margin: 4mm 0;
     break-inside: avoid;
   }
+  /* A long on-screen text table may continue on the next page; the image stays with its
+     caption and the start of the table, and rows stay whole. */
+  figure:has(> table.screen-text) {
+    break-inside: auto;
+  }
+  figure:has(> table.screen-text) > img,
+  figure:has(> table.screen-text) > figcaption {
+    break-inside: avoid;
+    break-after: avoid;
+  }
+  table.screen-text tr {
+    break-inside: avoid;
+  }
+  /* The translated copy carries the text in print; the pair fits the page width. */
+  .screen-figure {
+    width: auto;
+  }
+  .screen-text-list {
+    display: none;
+  }
   img {
     max-height: 180mm;
     object-fit: contain;

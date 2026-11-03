@@ -44,7 +44,7 @@ Segments can carry a `speaker` from the source transcript: a WebVTT voice span (
 | `table` | `columns` (strings), `rows` (statement cells) | Comparisons where every substantive cell is grounded |
 | `quote` | `verbatim`, `statement` | Exact transcript quote, or clearly labeled translation/paraphrase |
 | `code` | `text`, nullable `language`, `attribution`, `citations` | Source code or explicitly labeled reconstruction; never executed |
-| `figure` | `frameId`, `alt`, `caption` (statement) | Existing verified image asset, actually inspected by the host |
+| `figure` | `frameId`, `alt`, `caption` (statement), optional `screenText` | Existing verified image asset, actually inspected by the host |
 | `diagram` | `kind` (`stack`/`flow`), `id`, `title`, `alt`, `nodes`, `edges`, `caption` (statement) | Host-structured schematic drawn by the fixed renderer; never host SVG |
 
 A figure, for a frame you opened and confirmed:
@@ -55,6 +55,23 @@ A figure, for a frame you opened and confirmed:
 ```
 
 For a figure, `caption.citations` must cite the same frame and `analysis.inspectedFrameIds` must include it. Only bounded PNG/JPEG assets under `assets/` are supported. Frames come only from approved frame sampling (`policy.visual: frames` or `local-ocr`); do not fabricate frame records to add decorative imagery. On-screen text read from a frame is quoted with `verbatim: false` (verbatim matching applies to transcript segments only) and the wording you report is what you confirmed in the image; if OCR misread a card, use the image-confirmed text in the report and leave the evidence file untouched.
+
+When a figure's on-screen text is in another language than the report, add `screenText`: the text you read in the image, line by line, beside its translation into the report language. Without positions it renders as a two-column table under the figure. With positions (`box` and `background` on every line, copied unchanged from [`screen-text.mjs`](execution.md#frames-and-ocr) after the user's local-OCR decision) HTML and PDF show the frame beside a copy with each line's translation drawn in place, on the slide's own colour; Markdown keeps the table. Give every line a box, or none.
+
+```json
+{ "type": "figure", "frameId": "frame-0012", "alt": "Slide titled What's a derivative?",
+  "caption": { "text": "The slide defines the derivative as a higher-order function.", "attribution": "source", "citations": [{ "kind": "frame", "id": "frame-0012" }] },
+  "screenText": [
+    { "text": "What's a derivative?", "translation": "도함수란 무엇인가?" },
+    { "text": "See Calculus on Manifolds by Michael Spivak.", "translation": "Michael Spivak의 『Calculus on Manifolds』 참고." }
+  ] }
+```
+
+- Include headings, bullets, labels and sentences the reader needs; at most 40 lines. Leave out code, formulas, slide numbers and footers: they stay readable in the image (explain code in a `code` block or the text).
+- `text` is what the image shows, read from the frame you opened (OCR output, when present, is only a hint). Skip what you cannot read clearly; never complete a cut-off line.
+- Translate faithfully, keeping names, product terms and numbers; do not add explanation (that belongs in the caption or text).
+- With positions, keep each translation about as long as its line (it is drawn in that line's place and shrinks to fit), and start it with the bullet or number when the box includes one. Lines you leave out stay in the original language on the copy.
+- Omit `screenText` when the on-screen text is already in the report language or the figure has no text worth reading.
 
 ### Diagram block
 

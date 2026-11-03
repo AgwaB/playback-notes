@@ -171,6 +171,15 @@ OCR quality depends on the source. Tesseract works best on clean, high-contrast 
 
 On macOS use Vision: compile the shipped helper once with `swiftc -O -o "$PRIVATE/vision-ocr" "$SKILL/scripts/vision-ocr.swift"` (Xcode Command Line Tools; no download) and pass `--ocr-engine vision --ocr-executable "$PRIVATE/vision-ocr" --ocr-languages ko-KR,en-US`. `--ocr-region bottom|top|full` keeps only the subtitle band (Vision boxes are filtered; tesseract gets a cropped frame). For burned-in subtitles sample at `--ocr-sample-seconds 2` (frame cap 600). De-duplication is exact, never fuzzy: a line is a repeat only if its key (NFC and whitespace collapsing — nothing else is normalised) is identical to a line seen within the last 10 s of sampled source time — so a caption that stays on screen, a logo or a fixed label is reported once per sampled appearance and again after a 10 s absence, while any other change (a digit, a sign, a decimal point, a quote, letter case, a word or particle) keeps the frame; single-character fragments are ignored. OCR jitter therefore costs extra retained frames, never evidence. Timestamps are ffmpeg's media-relative presentation times (a stream whose first frame starts late keeps that offset; a container start offset is normalised by ffmpeg). Genuinely visible background text (tickers, posters) is still reported. A frame is discarded only when every line on it is a repeat or a single character; any new line of two or more characters keeps the frame. Each kept frame appears in `evidence.frames` with `ocrText`; the host must open the image and record it in `inspectedFrameIds` before citing it. With no transcript and `asr: off`, OCR frames alone yield visual-only evidence (`extraction.method: "none"`, zero chunks). For YouTube, frames/OCR use a ≤480p video-only stream only when the user approved the download and `--yt-dlp-executable` is passed; other platform media is never downloaded.
 
+**Translated slide images.** With the user's decision for them (local OCR of chosen figures), run after inspecting frames and choosing figures; it reads only the listed frames and changes nothing:
+
+```bash
+node "$SKILL/scripts/screen-text.mjs" --evidence "$JOB/evidence.json" --work-dir "$JOB" \
+  --frames frame-0012,frame-0216 --ocr-engine vision --ocr-executable "$PRIVATE/vision-ocr" --ocr-languages en-US
+```
+
+It prints each frame's lines with a `box` (fractions of the image, top-left origin) and the slide `background` colour around the line. Tesseract works too (`--ocr-engine tesseract --ocr-executable /absolute/tesseract --ocr-languages eng`) but reads slides less well. The output is untrusted OCR: use it as described under `screenText` in [report authoring](report-authoring.md).
+
 `--browser-executable` only selects the PDF/preflight capability; acquisition never launches a browser.
 
 ## Acquisition canary

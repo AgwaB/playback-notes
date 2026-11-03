@@ -343,6 +343,76 @@ figcaption {
   margin-top: 0.6rem;
   color: var(--muted);
 }
+/* On-screen text beside its translation, under the figure it was read from. */
+table.screen-text {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  table-layout: fixed;
+}
+table.screen-text th,
+table.screen-text td {
+  padding: 0.35rem 0.55rem;
+  width: 50%;
+  overflow-wrap: anywhere;
+}
+table.screen-text td:first-child {
+  color: var(--muted);
+}
+/* A frame beside a copy with its text translated in place; on wide screens the pair
+   reaches past the text column (but not past the viewport) so both stay readable. */
+.screen-figure {
+  width: min(1180px, max(100%, min(50vw + 230px, 100vw - 310px)));
+}
+body.pinned .screen-figure {
+  width: auto;
+}
+.screen-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.screen-shot {
+  position: relative;
+  container-type: inline-size;
+  overflow: hidden;
+  border-radius: 0.5rem;
+}
+.screen-shot img {
+  border-radius: 0;
+}
+.screen-translated span {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 0.15em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  font-weight: 500;
+}
+.screen-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.screen-text-list {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+}
+.screen-text-list summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+@media (max-width: 760px) {
+  .screen-figure {
+    width: auto;
+  }
+  .screen-pair {
+    grid-template-columns: 1fr;
+  }
+}
 .limitations,
 .references,
 footer {
