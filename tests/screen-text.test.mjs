@@ -133,26 +133,52 @@ test("positioned on-screen text draws the translation over a copy of the frame b
   const f = await fixture(withFigure(BOXED));
   try {
     const html = htmlDocument(f.bundle);
-    const figure = html.match(/<figure class="screen-figure"[\s\S]*?<\/figure>/)?.[0];
+    const figure = html.match(
+      /<figure class="screen-figure"[\s\S]*?<\/figure>/,
+    )?.[0];
     assert.ok(figure, "a side-by-side figure");
-    assert.equal((figure.match(/<img /g) ?? []).length, 2, "original and translated copy");
-    assert.match(figure, /<img src="assets\/frame-0001.jpg" alt="Slide titled What&#x27;s a derivative\?"/);
+    assert.equal(
+      (figure.match(/<img /g) ?? []).length,
+      2,
+      "original and translated copy",
+    );
+    assert.match(
+      figure,
+      /<img src="assets\/frame-0001.jpg" alt="Slide titled What&#x27;s a derivative\?"/,
+    );
     assert.match(figure, /<img src="assets\/frame-0001.jpg" alt=""/);
     assert.match(figure, />Original</);
     assert.match(figure, />Translated</);
-    const spans = [...figure.matchAll(/<span style="([^"]*)">([^<]*(?:&lt;[^<]*)*)<\/span>/g)];
+    const spans = [
+      ...figure.matchAll(
+        /<span style="([^"]*)">([^<]*(?:&lt;[^<]*)*)<\/span>/g,
+      ),
+    ];
     assert.equal(spans.length, 3);
-    assert.match(spans[0][1], /^left:13\.80%;top:4\.20%;min-width:34\.40%;max-width:\d+\.\d+%;height:7\.60%;font-size:\d+\.\d+cqw;background:#eaeaea;color:#1f2430$/);
-    assert.match(spans[2][1], /background:#101820;color:#f5f5f2$/, "light text on a dark slide");
+    assert.match(
+      spans[0][1],
+      /^left:13\.80%;top:4\.20%;min-width:34\.40%;max-width:\d+\.\d+%;height:7\.60%;font-size:\d+\.\d+cqw;background:#eaeaea;color:#1f2430$/,
+    );
+    assert.match(
+      spans[2][1],
+      /background:#101820;color:#f5f5f2$/,
+      "light text on a dark slide",
+    );
     assert.ok(!figure.includes("<b>"), "translations are escaped");
     assert.match(figure, /&lt;b&gt;합성&lt;\/b&gt;/);
     // Bullets of one height share a size; the taller title keeps its own.
     const size = (span) => Number(/font-size:([\d.]+)cqw/.exec(span[1])[1]);
     assert.equal(size(spans[1]), size(spans[2]));
     assert.ok(size(spans[0]) > size(spans[1]));
-    assert.match(figure, /<details class="screen-text-list"><summary>On-screen text<\/summary><table class="screen-text">/);
+    assert.match(
+      figure,
+      /<details class="screen-text-list"><summary>On-screen text<\/summary><table class="screen-text">/,
+    );
     // Markdown cannot draw over an image: the same lines stay a table.
-    assert.match(markdownDocument(f.bundle), /\| Efficiency of composition +\| 합성의 효율 +\|/);
+    assert.match(
+      markdownDocument(f.bundle),
+      /\| Efficiency of composition +\| 합성의 효율 +\|/,
+    );
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }
@@ -169,7 +195,11 @@ test("positioned lines are all-or-none, stay inside the frame and use a lowercas
     [{ ...boxed, background: "red" }],
     [{ ...boxed, box: { ...boxed.box, z: 1 } }],
   ])
-    await assert.rejects(fixture(withFigure(bad)), { code: "INVALID_CONTRACT" }, JSON.stringify(bad).slice(0, 120));
+    await assert.rejects(
+      fixture(withFigure(bad)),
+      { code: "INVALID_CONTRACT" },
+      JSON.stringify(bad).slice(0, 120),
+    );
   // Without a background the copy is drawn on white.
   const f = await fixture(withFigure([{ ...boxed, background: undefined }]));
   try {

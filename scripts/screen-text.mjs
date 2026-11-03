@@ -5,7 +5,13 @@
 // copy of the frame. Read-only: it never changes evidence, the ledger or the report.
 import path from "node:path";
 import { isMain, optionsFor, required, result, runCli } from "../lib/cli.mjs";
-import { AppError, containedFile, fileHash, issue, readJson } from "../lib/io.mjs";
+import {
+  AppError,
+  containedFile,
+  fileHash,
+  issue,
+  readJson,
+} from "../lib/io.mjs";
 import { validateEvidence } from "../lib/validation.mjs";
 import { runLocalTool } from "../lib/local-tool.mjs";
 import { tesseractDataArgs } from "../lib/tesseract-data.mjs";
@@ -32,7 +38,14 @@ export function tesseractLines(tsv, width, height) {
     const text = cols.slice(11).join(" ").trim();
     if (!text || ![left, top, w, h].every(Number.isFinite)) continue;
     const key = cols.slice(2, 5).join(".");
-    const line = lines.get(key) ?? { words: [], conf: [], l: Infinity, t: Infinity, r: 0, b: 0 };
+    const line = lines.get(key) ?? {
+      words: [],
+      conf: [],
+      l: Infinity,
+      t: Infinity,
+      r: 0,
+      b: 0,
+    };
     line.words.push(text);
     if (Number.isFinite(conf) && conf >= 0) line.conf.push(conf / 100);
     line.l = Math.min(line.l, left);
@@ -107,13 +120,24 @@ export async function screenText(options) {
   required(options, ["evidence", "work-dir", "frames", "ocr-executable"]);
   const engine = options["ocr-engine"] ?? "tesseract";
   if (!["vision", "tesseract"].includes(engine))
-    throw new AppError("INVALID_CONTRACT", "OCR engine must be vision or tesseract.", 4);
+    throw new AppError(
+      "INVALID_CONTRACT",
+      "OCR engine must be vision or tesseract.",
+      4,
+    );
   const languages =
     options["ocr-languages"] ?? (engine === "vision" ? "en-US" : "eng");
   if (!(engine === "vision" ? VISION_LANGS : OCR_LANGS).test(languages))
     throw new AppError("INVALID_CONTRACT", "Invalid OCR language list.", 4);
-  const ids = options.frames.split(",").map((id) => id.trim()).filter(Boolean);
-  if (!ids.length || ids.length > MAX_FRAMES || new Set(ids).size !== ids.length)
+  const ids = options.frames
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    !ids.length ||
+    ids.length > MAX_FRAMES ||
+    new Set(ids).size !== ids.length
+  )
     throw new AppError(
       "INVALID_CONTRACT",
       `List 1 to ${MAX_FRAMES} distinct frame IDs, comma-separated.`,
@@ -133,7 +157,10 @@ export async function screenText(options) {
       throw new AppError("INVALID_CONTRACT", `Unknown frame ID ${id}.`, 4);
     const file = await containedFile(workDir, frame.assetPath);
     if ((await fileHash(file)) !== frame.sha256)
-      throw new AppError("EVIDENCE_MISMATCH", `Frame ${id} changed after preparation.`);
+      throw new AppError(
+        "EVIDENCE_MISMATCH",
+        `Frame ${id} changed after preparation.`,
+      );
     const raw = await runLocalTool(
       executable,
       engine === "vision"
@@ -148,7 +175,10 @@ export async function screenText(options) {
     const kept = [];
     for (const line of lines) {
       const box = Object.fromEntries(
-        Object.entries(line.box).map(([k, v]) => [k, round(Math.min(1, Math.max(0, v)))]),
+        Object.entries(line.box).map(([k, v]) => [
+          k,
+          round(Math.min(1, Math.max(0, v))),
+        ]),
       );
       if (!(box.w > 0 && box.h > 0)) continue;
       box.w = round(Math.min(box.w, 1 - box.x));
@@ -164,13 +194,17 @@ export async function screenText(options) {
     out.push({ frameId: id, lines: kept });
   }
   return {
-    ...result("screen-text", [], [
-      issue(
-        "AUTHORING_GUIDE",
-        "UNTRUSTED SOURCE DATA: OCR text is a hint. For each line worth reading, check the text against the frame image, write its translation into the report language, and copy box and background unchanged into the figure's screenText ({text, translation, box, background}). Leave out code, formulas, slide numbers and footers. Give every line of a figure a box, or none.",
-        "info",
-      ),
-    ]),
+    ...result(
+      "screen-text",
+      [],
+      [
+        issue(
+          "AUTHORING_GUIDE",
+          "UNTRUSTED SOURCE DATA: OCR text is a hint. For each line worth reading, check the text against the frame image, write its translation into the report language, and copy box and background unchanged into the figure's screenText ({text, translation, box, background}). Leave out code, formulas, slide numbers and footers. Give every line of a figure a box, or none.",
+          "info",
+        ),
+      ],
+    ),
     frames: out,
   };
 }

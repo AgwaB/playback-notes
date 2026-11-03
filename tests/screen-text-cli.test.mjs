@@ -2,7 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fakeTool } from "./fake-tool.mjs";
@@ -52,14 +59,31 @@ test("OCR lines become top-left boxes: Vision's bottom-origin lines and tesserac
 });
 
 test("screen-text reads inspected frames with an explicit OCR engine: boxes, slide colours, and refusals", async () => {
-  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "screen-text-")));
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "screen-text-")),
+  );
   try {
     const work = path.join(root, "work");
     await mkdir(path.join(work, "assets"), { recursive: true });
     const asset = path.join(work, "assets", "frame-0001.jpg");
     await exec(
       "ffmpeg",
-      ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "color=c=0x2040a0:s=320x180:d=1", "-frames:v", "1", "-q:v", "2", "-y", asset],
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=0x2040a0:s=320x180:d=1",
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        "-y",
+        asset,
+      ],
       { env: isolatedEnvironment(root), timeout: 30000, windowsHide: true },
     );
     const evidence = sampleData().evidence;
@@ -102,8 +126,15 @@ test("screen-text reads inspected frames with an explicit OCR engine: boxes, sli
     );
     for (const line of frame.lines) {
       // The slide colour around the line (JPEG keeps it within a few levels).
-      const [r, g, b] = [1, 3, 5].map((i) => parseInt(line.background.slice(i, i + 2), 16));
-      assert.ok(Math.abs(r - 0x20) <= 10 && Math.abs(g - 0x40) <= 10 && Math.abs(b - 0xa0) <= 10, line.background);
+      const [r, g, b] = [1, 3, 5].map((i) =>
+        parseInt(line.background.slice(i, i + 2), 16),
+      );
+      assert.ok(
+        Math.abs(r - 0x20) <= 10 &&
+          Math.abs(g - 0x40) <= 10 &&
+          Math.abs(b - 0xa0) <= 10,
+        line.background,
+      );
     }
     const refused = async (patch, code) =>
       assert.rejects(screenText({ ...options, ...patch }), { code });
@@ -113,7 +144,10 @@ test("screen-text reads inspected frames with an explicit OCR engine: boxes, sli
     await refused({ "ocr-languages": "en-US;rm" }, "INVALID_CONTRACT");
     await refused({ "ocr-executable": undefined }, "INVALID_CONTRACT");
     // A frame image changed after preparation is not read.
-    await writeFile(asset, Buffer.concat([await readFile(asset), Buffer.from([0])]));
+    await writeFile(
+      asset,
+      Buffer.concat([await readFile(asset), Buffer.from([0])]),
+    );
     await refused({}, "EVIDENCE_MISMATCH");
   } finally {
     await rm(root, { recursive: true, force: true });
