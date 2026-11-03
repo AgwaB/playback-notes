@@ -1,17 +1,78 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { isolatedEnvironment } from "../lib/ingest.mjs";
+import { extractSource, isolatedEnvironment } from "../lib/ingest.mjs";
 import { atomicWrite, containedFile } from "../lib/io.mjs";
 import { copyMedia } from "../lib/media-copy.mjs";
 import { readAsrOutput } from "../lib/asr-output.mjs";
 import { runLocalTool } from "../lib/local-tool.mjs";
+import { fakeTool } from "./fake-tool.mjs";
 
 const execute = promisify(execFile);
+
+test("a stopped extraction reports its own failure while a stopped tool still holds a file", {
+  skip: process.platform !== "win32",
+}, async (t) => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "held 정리 ")));
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 10 }));
+  const media = path.join(root, "source.wav");
+  await execute("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "sine=frequency=440:duration=3", "-c:a", "pcm_s16le", media], { timeout: 15000 });
+  const model = path.join(root, "model.bin");
+  await writeFile(model, "test model, not inference");
+  const running = path.join(root, "running");
+  const whisper = await fakeTool(path.join(root, "whisper"), `
+import fs from 'node:fs';
+const args = process.argv.slice(2);
+if (args.includes('--version') || args.includes('--help')) { console.log('whisper.cpp version 1.9.5'); process.exit(0); }
+fs.writeFileSync(${JSON.stringify(running)}, '');
+setInterval(() => {}, 1000);
+`);
+  const work = path.join(root, "work");
+  await mkdir(work);
+  const until = async (file) => {
+    for (let waited = 0; !(await access(file).then(() => true, () => false)); waited += 100) {
+      assert.ok(waited < 30000, `${path.basename(file)} did not appear`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  };
+  const controller = new AbortController();
+  const extraction = extractSource(
+    {
+      source: { kind: "local", value: media },
+      transcriptFile: null,
+      policy: { asr: "local", visual: "off", extractTimeoutMs: 60000, asrTimeoutMs: 60000 },
+    },
+    { workDir: work, localAsrExecutable: whisper, localAsrModel: model, signal: controller.signal },
+  );
+  extraction.catch(() => {});
+  await until(running);
+  // While transcription runs, a process outside the tool's tree holds its input without
+  // delete sharing for a moment, as a stopped native tool that is still shutting down (a
+  // GPU runtime releasing its files) or an antivirus scan does.
+  const [folder] = (await readdir(work)).filter((name) => name.startsWith("ingest-"));
+  const input = path.join(work, folder, "asr-input.wav");
+  const held = path.join(root, "held");
+  const quote = (value) => `'${value.replace(/'/g, "''")}'`;
+  const holder = spawn("powershell.exe", ["-NoProfile", "-Command",
+    `$f=[IO.File]::Open(${quote(input)},'Open','Read','Read'); New-Item -ItemType File ${quote(held)} | Out-Null; Start-Sleep -Milliseconds 2500; $f.Close()`,
+  ], { stdio: "ignore" });
+  const released = new Promise((resolve) => holder.once("exit", resolve));
+  t.after(() => holder.kill());
+  await until(held);
+  controller.abort();
+  await assert.rejects(extraction, { code: "CANCELLED" });
+  await released;
+  assert.deepEqual(
+    (await readdir(work)).filter((name) => name.startsWith("ingest-")),
+    [],
+    "the folder is removed once the file is released",
+  );
+});
 
 test("Windows extraction retains native tool lookup and private temp/profile paths", {
   skip: process.platform !== "win32",
