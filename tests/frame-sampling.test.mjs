@@ -278,7 +278,9 @@ test("a video without a sound track is not transcribed: frames alone are its evi
     ),
     localAsrModel: path.join(root, "unused-model.bin"),
   };
-  await writeFile(asr.localAsrExecutable, "#!/bin/sh\nexit 9\n", { mode: 0o755 });
+  await writeFile(asr.localAsrExecutable, "#!/bin/sh\nexit 9\n", {
+    mode: 0o755,
+  });
   await writeFile(asr.localAsrModel, "placeholder");
   const silentRequest = (visual) => ({
     source: { kind: "local", value: builds },
@@ -292,18 +294,21 @@ test("a video without a sound track is not transcribed: frames alone are its evi
   assert.deepEqual(result.segments, []);
   assert.ok(result.frames.length > 0);
   assert.ok(warning(result, "NO_AUDIO_TRACK"));
-  await t.test("without frames the missing sound is the named cause", async () => {
-    await assert.rejects(
-      extractSource(silentRequest("off"), {
-        workDir: path.join(root, "silent-asr"),
-        ...asr,
-      }),
-      (error) => {
-        assert.equal(error.code, "SOURCE_UNSUPPORTED");
-        assert.equal(error.detail, "no-decodable-audio");
-        assert.match(error.message, /without a sound track/);
-        return true;
-      },
-    );
-  });
+  await t.test(
+    "without frames the missing sound is the named cause",
+    async () => {
+      await assert.rejects(
+        extractSource(silentRequest("off"), {
+          workDir: path.join(root, "silent-asr"),
+          ...asr,
+        }),
+        (error) => {
+          assert.equal(error.code, "SOURCE_UNSUPPORTED");
+          assert.equal(error.detail, "no-decodable-audio");
+          assert.match(error.message, /without a sound track/);
+          return true;
+        },
+      );
+    },
+  );
 });
