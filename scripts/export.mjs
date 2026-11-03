@@ -27,7 +27,9 @@ export async function exportReport(options) {
   required(options, ["request", "evidence", "analysis", "report", "out-dir"]);
   const bundle = await loadBundle(options);
   const formats = options.formats
-    ? options.formats.split(",")
+    ? options.formats
+        .split(",")
+        .filter((format) => ["markdown", "pdf"].includes(format))
     : bundle.request.formats.filter((format) => format !== "html");
   // An HTML-only request has nothing to export: say so instead of failing, so the same
   // render → export → verify sequence works for every request.
