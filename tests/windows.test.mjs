@@ -11,8 +11,40 @@ import { copyMedia } from "../lib/media-copy.mjs";
 import { readAsrOutput } from "../lib/asr-output.mjs";
 import { runLocalTool } from "../lib/local-tool.mjs";
 import { fakeTool } from "./fake-tool.mjs";
+import { WINDOWS_WORK_DIR_MAX, prepare } from "../scripts/prepare.mjs";
 
 const execute = promisify(execFile);
+
+test("a job folder deeper than Windows tools can work in is refused before anything runs", {
+  skip: process.platform !== "win32",
+}, async (t) => {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "긴 작업 ")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const media = path.join(root, "source.wav");
+  await execute("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+    "sine=frequency=440:duration=2", "-c:a", "pcm_s16le", media], { timeout: 15000 });
+  const transcript = path.join(root, "source.srt");
+  await writeFile(transcript, "1\n00:00:00,000 --> 00:00:02,000\n짧은 문장.\n");
+  const request = path.join(root, "request.json");
+  await writeFile(request, JSON.stringify({ schemaVersion: 1, source: { kind: "local", value: media },
+    transcriptFile: transcript, mode: "briefing", outputLanguage: "ko", policy: { asr: "off" } }));
+  const at = (length) => {
+    let dir = root;
+    while (dir.length < length - 12) dir = path.join(dir, "깊은 폴더");
+    return path.join(dir, "j".repeat(length - dir.length - 1));
+  };
+  const allowed = at(WINDOWS_WORK_DIR_MAX);
+  assert.equal(allowed.length, WINDOWS_WORK_DIR_MAX);
+  assert.equal((await prepare({ request, "work-dir": allowed })).status, "ok");
+  const deeper = at(WINDOWS_WORK_DIR_MAX + 1);
+  await assert.rejects(prepare({ request, "work-dir": deeper }), (error) => {
+    assert.equal(error.code, "PATH_TOO_LONG");
+    assert.equal(error.exitCode, 4);
+    assert.match(error.message, /201 characters long; on Windows it can be at most 200/);
+    return true;
+  });
+  await assert.rejects(access(deeper), { code: "ENOENT" }, "nothing is created");
+});
 
 test("a stopped extraction reports its own failure while a stopped tool still holds a file", {
   skip: process.platform !== "win32",

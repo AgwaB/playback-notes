@@ -37,7 +37,7 @@ so this is not a security boundary against file additions or replacements by the
 
 Supplied SRT/VTT/TXT transcripts can be UTF-8, Notepad's "Unicode" (UTF-16) or a legacy code page such as EUC-KR/CP949, which is detected from the file's bytes and reported with `TRANSCRIPT_ENCODING_DETECTED`; a file too short to detect must be re-saved as UTF-8.
 The skill writes UTF-8 without a byte-order mark. Windows PowerShell 5.1 reads such files in the ANSI code page by default, so read evidence, chunks and reports with `Get-Content -Raw -Encoding UTF8` (PowerShell 7 already defaults to UTF-8). Start a command that pipes a script's output (for example `scripts/read.mjs … | Select-Object`), captures it in a variable or redirects it to a file (`>`) with `[Console]::OutputEncoding = [Text.Encoding]::UTF8;`, or non-English text is silently garbled; output that is neither piped nor captured is passed through unchanged. JSON the agent saves with `Set-Content -Encoding UTF8`, `>` or `Out-File` (UTF-8 with a byte-order mark, or UTF-16) is accepted.
-Quote CLI paths that contain spaces or Korean characters. In JSON, write paths as `C:/Videos/sample.mp4` or
+Quote CLI paths that contain spaces or Korean characters. Keep the job folder path at most 200 characters (`PATH_TOO_LONG` otherwise): unless long paths are enabled system-wide, Windows and its media tools stop at about 250 characters, and transcription works about 50 characters below the job folder. Output folders and source files can be longer. In JSON, write paths as `C:/Videos/sample.mp4` or
 `C:\\Videos\\sample.mp4`. Keep work and public output directories separate.
 
 ```powershell

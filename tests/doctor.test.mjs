@@ -214,6 +214,17 @@ test("Windows: winget is found by running it, and its portable packages are foun
   assert.equal(report.flags["yt-dlp"], `--yt-dlp-executable "${ytDir}\\yt-dlp.exe"`);
 });
 
+test("Windows: a PATH entry in double quotes is searched like the system searches it", () => {
+  const report = machine({
+    platform: "win32",
+    env: { Path: 'C:\\Windows\\System32;"C:\\Program Files\\ffmpeg\\bin"' },
+    files: ["C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe"],
+    outputs: { "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe": "ffmpeg version 9.0.2\n" },
+  });
+  assert.equal(tool(report, "ffmpeg").status, "ok");
+  assert.equal(tool(report, "ffmpeg").path, "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe");
+});
+
 test("Windows: an old yt-dlp is updated the way it was installed", () => {
   const update = (file) =>
     tool(

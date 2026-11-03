@@ -4,6 +4,7 @@ import { access, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import {
+  AppError,
   artifact,
   atomicWrite,
   fileHash,
@@ -113,8 +114,24 @@ export async function preferredGpu(options, request, preferencePaths) {
     return options;
   }
 }
+/**
+ * Longest job folder path on Windows. Unless long paths are enabled system-wide, Windows
+ * creates folders only up to 247 characters, starts a program only in a folder of at most
+ * 258, and whisper.cpp and ffmpeg open files only up to 259; transcription goes about 50
+ * characters below the job folder (ingest-XXXXXX\asr-recheck-XXXXXX\segment-N.wav). Longer
+ * job folders failed late, after transcription, with ENAMETOOLONG or ENOENT.
+ */
+export const WINDOWS_WORK_DIR_MAX = 200;
+
 export async function prepare(options, { asrPreferencePath = asrPreferencePaths() } = {}) {
   required(options, ["request", "work-dir"]);
+  const workDirLength = path.resolve(options["work-dir"]).length;
+  if (process.platform === "win32" && workDirLength > WINDOWS_WORK_DIR_MAX)
+    throw new AppError(
+      "PATH_TOO_LONG",
+      `The job folder path is ${workDirLength} characters long; on Windows it can be at most ${WINDOWS_WORK_DIR_MAX}, because transcription and media tools cannot work in deeper folders. Use a job folder with a shorter path, for example nearer the drive root. Output folders can be longer.`,
+      4,
+    );
   validateCodeSwitch(options["local-asr-code-switch"]);
   const request = normalizeRequest((await readJson(options.request)).data);
   options = await preferredGpu(options, request, asrPreferencePath);

@@ -6,7 +6,7 @@
 import nodePath from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { isMain, optionsFor, result, runCli } from "../lib/cli.mjs";
 import { issue, jsonText } from "../lib/io.mjs";
@@ -149,7 +149,12 @@ export function diagnose({
   const spec = (name) => PACKAGES[os_][name] ?? null;
   const install = (name) => installCommands([spec(name)]).join("; ") || null;
   const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH");
-  const userDirs = (env[pathKey] ?? "").split(win ? ";" : ":").filter(Boolean);
+  const userDirs = (env[pathKey] ?? "")
+    .split(win ? ";" : ":")
+    // Windows allows a PATH entry in double quotes (a folder with a ";" or as some installers
+    // write it); programs are found in it, so it counts here too.
+    .map((dir) => (win ? dir.replace(/^"(.*)"$/, "$1") : dir))
+    .filter(Boolean);
   const workerDirs = win ? userDirs : SAFE_PATH.split(":");
   // Windows places what winget just installed, and Tesseract, outside the PATH of programs
   // that were already running (or outside any PATH, for Tesseract). winget links portable
