@@ -48,7 +48,11 @@ const PACKAGES = {
     node: { winget: ["OpenJS.NodeJS.LTS"] },
     ffmpeg: { winget: ["Gyan.FFmpeg"] },
     "yt-dlp": { winget: ["yt-dlp.yt-dlp"] },
-    "yt-dlp-update": { run: ["winget upgrade --id yt-dlp.yt-dlp -e --source winget"] },
+    "yt-dlp-update": {
+      run: [
+        "winget upgrade --id yt-dlp.yt-dlp -e --source winget --accept-package-agreements --accept-source-agreements",
+      ],
+    },
     whisper: { run: ['the commands in references/windows.md, "Local transcription" (they also write the preference file)'] },
     // winget's catalogue lists Chrome's stable channel only as the EXE installer.
     browser: { winget: ["Google.Chrome.EXE"] },
@@ -58,16 +62,21 @@ const PACKAGES = {
   linux: {
     node: { run: ["Node.js 24.15+ from https://nodejs.org or your distribution"] },
     ffmpeg: { apt: ["ffmpeg"] },
-    "yt-dlp": { pipx: ["yt-dlp"] },
+    // pipx itself comes from apt; it installs yt-dlp into ~/.local/bin.
+    "yt-dlp": { apt: ["pipx"], pipx: ["yt-dlp"] },
     "yt-dlp-update": { run: ["pipx upgrade yt-dlp"] },
     whisper: { run: ['build whisper.cpp and download the model as the README\'s "Optional: local transcription" describes'] },
-    browser: { apt: ["chromium"] },
+    // Debian's Chromium starts its sandbox only with the setuid helper package.
+    browser: { apt: ["chromium", "chromium-sandbox"] },
     tesseract: { apt: ["tesseract-ocr", "tesseract-ocr-kor"] },
     manager: { run: ["apt (Debian/Ubuntu; use your distribution's package manager otherwise)"] },
   },
 };
 /** Commands for a set of install specs, one per package manager, in a stable order. */
-export function installCommands(specs) {
+export function installCommands(specs, { root = false } = {}) {
+  // Commands an agent can run unattended: no confirmation prompts, and no sudo where the
+  // shell already runs as root (containers have no sudo).
+  const sudo = root ? "" : "sudo ";
   const merged = { brew: [], cask: [], winget: [], apt: [], pipx: [], run: [] };
   for (const spec of specs)
     for (const [kind, items] of Object.entries(spec ?? {}))
@@ -77,8 +86,12 @@ export function installCommands(specs) {
     merged.cask.length && `brew install --cask ${merged.cask.join(" ")}`,
     // --source winget: the IDs are the winget catalogue's, and the Microsoft Store source
     // would first ask an agent's terminal to accept its terms.
-    ...merged.winget.map((id) => `winget install --id ${id} -e --source winget`),
-    merged.apt.length && `sudo apt install ${merged.apt.join(" ")}`,
+    ...merged.winget.map(
+      (id) =>
+        `winget install --id ${id} -e --source winget --accept-package-agreements --accept-source-agreements`,
+    ),
+    merged.apt.length &&
+      `${sudo}apt-get update && ${sudo}apt-get install -y ${merged.apt.join(" ")}`,
     merged.pipx.length && `pipx install ${merged.pipx.join(" ")}`,
     ...merged.run,
   ].filter(Boolean);
@@ -133,6 +146,8 @@ export function diagnose({
   skillDir = SKILL_DIR,
   probe = realProbe,
   exists = realExists,
+  root = process.getuid?.() === 0,
+  arch = os.arch(),
   // JSON saved by Windows PowerShell 5.1 has a byte-order mark or is UTF-16.
   readText = (file) => jsonText(readFileSync(file)),
   list = (dir) => {
@@ -147,7 +162,8 @@ export function diagnose({
   const p = win ? nodePath.win32 : nodePath.posix;
   const os_ = PACKAGES[platform] ? platform : "linux";
   const spec = (name) => PACKAGES[os_][name] ?? null;
-  const install = (name) => installCommands([spec(name)]).join("; ") || null;
+  const commands = (specs) => installCommands(specs, { root });
+  const install = (name) => commands([spec(name)]).join("; ") || null;
   const pathKey = Object.keys(env).find((key) => key.toUpperCase() === "PATH");
   const userDirs = (env[pathKey] ?? "")
     .split(win ? ";" : ":")
@@ -156,6 +172,8 @@ export function diagnose({
     .map((dir) => (win ? dir.replace(/^"(.*)"$/, "$1") : dir))
     .filter(Boolean);
   const workerDirs = win ? userDirs : SAFE_PATH.split(":");
+  // pipx (and `pip install --user`) put commands in ~/.local/bin, often not on PATH yet.
+  const localBin = win ? [] : [p.join(home, ".local", "bin")];
   // Windows places what winget just installed, and Tesseract, outside the PATH of programs
   // that were already running (or outside any PATH, for Tesseract). winget links portable
   // packages in WinGet\Links only where symbolic links are allowed (Developer Mode or an
@@ -209,7 +227,7 @@ export function diagnose({
       path: null,
       version: null,
       neededFor: NEEDED_FOR[name.replace(/^ffprobe$/, "ffmpeg")],
-      install: fix ? installCommands([fix]).join("; ") || null : null,
+      install: fix ? commands([fix]).join("; ") || null : null,
       note: null,
       ...rest,
     });
@@ -243,7 +261,9 @@ export function diagnose({
     missingPackages = ["package.json unreadable"];
   }
   add("packages", missingPackages.length ? "missing" : "ok", {
-    fix: missingPackages.length ? { run: [`npm ci (in ${skillDir})`] } : null,
+    fix: missingPackages.length
+      ? { run: [`npm ci --prefix "${skillDir.replace(/[\\/]$/, "")}"`] }
+      : null,
     note: missingPackages.length
       ? `Missing: ${missingPackages.join(", ")}`
       : null,
@@ -274,7 +294,12 @@ export function diagnose({
   }
 
   // yt-dlp: any location (its path is passed explicitly); too old usually fails on YouTube.
-  const ytDlp = find("yt-dlp", [...userDirs, ...workerDirs, ...installedDirs]);
+  const ytDlp = find("yt-dlp", [
+    ...userDirs,
+    ...workerDirs,
+    ...installedDirs,
+    ...localBin,
+  ]);
   const ytRun = ytDlp ? probe(ytDlp, ["--version"]) : null;
   if (!ytRun?.ok) add("yt-dlp", "missing", { path: ytDlp });
   else {
@@ -311,22 +336,40 @@ export function diagnose({
     p.join(home, ".agents", "video-summarizer-asr.json"),
   ];
   const prefs = prefsPaths.find((file) => exists(file));
-  // macOS: Homebrew's whisper.cpp, the turbo model (1.6 GB) and the preference file that
-  // names them, so one approval sets transcription up. Other systems keep their guides.
+  // macOS and Linux: whisper.cpp, the turbo model (1.6 GB) and the preference file that
+  // names them, so one approval sets transcription up. Windows keeps its guide.
   const modelPath = p.join(home, ".agents", "models", "ggml-large-v3-turbo.bin");
   function whisperFix(prefsFile, binary = null) {
-    if (platform !== "darwin") return spec("whisper");
-    const brewBin = managerFound ? p.dirname(managerFound) : "/opt/homebrew/bin";
-    const executable = binary ?? p.join(brewBin, "whisper-cli");
+    if (win) return spec("whisper");
+    const model = exists(modelPath)
+      ? []
+      : [
+          `mkdir -p "${p.dirname(modelPath)}" && curl -L -o "${modelPath}" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin  # 1.6 GB`,
+        ];
+    const save = (executable) =>
+      `printf '%s\\n' '${JSON.stringify({ localAsrExecutable: executable, localAsrModel: modelPath })}' > "${prefsFile}"`;
+    if (platform === "darwin") {
+      const brewBin = managerFound ? p.dirname(managerFound) : "/opt/homebrew/bin";
+      return {
+        brew: binary ? [] : ["whisper.cpp"],
+        run: [...model, save(binary ?? p.join(brewBin, "whisper-cli"))],
+      };
+    }
+    // Linux: build whisper.cpp from source (distributions ship none, or an old one). GCC's
+    // native CPU detection fails on arm64, so arm64 builds the portable variant.
+    const source = p.join(home, ".agents", "whisper.cpp");
+    const built = p.join(source, "build", "bin", "whisper-cli");
     return {
-      brew: binary ? [] : ["whisper.cpp"],
+      apt: binary ? ["curl"] : ["git", "cmake", "build-essential", "curl"],
       run: [
-        ...(exists(modelPath)
+        ...(binary
           ? []
           : [
-              `mkdir -p "${p.dirname(modelPath)}" && curl -L -o "${modelPath}" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin  # 1.6 GB`,
+              `[ -d "${source}" ] || git clone --depth 1 https://github.com/ggml-org/whisper.cpp "${source}"`,
+              `cmake -S "${source}" -B "${source}/build" -DCMAKE_BUILD_TYPE=Release${arch === "arm64" ? " -DGGML_NATIVE=OFF" : ""} && cmake --build "${source}/build" -j --config Release --target whisper-cli`,
             ]),
-        `write ${prefsFile} containing ${JSON.stringify({ localAsrExecutable: executable, localAsrModel: modelPath })}`,
+        ...model,
+        save(binary ?? built),
       ],
     };
   }
@@ -399,9 +442,23 @@ export function diagnose({
           .map((name) => find(name, userDirs))
           .filter(Boolean);
   const browser = browsers.find((file) => exists(file)) ?? null;
-  add("browser", browser ? "ok" : "missing", {
+  // Chromium refuses to start its sandbox as root, and the sandbox is never turned off.
+  const rootLinux = root && !win && platform !== "darwin";
+  add("browser", browser ? (rootLinux ? "not-usable" : "ok") : "missing", {
     path: browser,
-    note: browser ? "Pass it as --browser-executable for PDF." : null,
+    note: rootLinux
+      ? "PDF needs a regular (non-root) user: Chromium's sandbox does not start as root. HTML and Markdown are unaffected."
+      : browser
+        ? "Pass it as --browser-executable for PDF."
+        : null,
+    ...(rootLinux
+      ? {
+          fix: {
+            ...(browser ? {} : spec("browser")),
+            run: ["run the skill as a regular (non-root) user for PDF"],
+          },
+        }
+      : {}),
   });
 
   // OCR: tesseract anywhere; the Apple Vision helper on macOS (compiled with swiftc).
@@ -455,7 +512,7 @@ export function diagnose({
           for: feature.for,
           ready: !missing.length,
           missing,
-          install: installCommands(missing.map((name) => fixes.get(name))),
+          install: commands(missing.map((name) => fixes.get(name))),
         },
       ];
     }),

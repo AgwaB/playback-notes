@@ -52,7 +52,7 @@ Ask follow-up questions about the same source for timestamp-cited answers. If a 
 
 ## Installation
 
-Requires **Node.js 24.15+ within the 24.x line, or 26+** (Node 25 is not supported).
+Requires **Node.js 24.15+ within the 24.x line, or 26+** (Node 25 is not supported) and **git**, which `npx skills add` uses to fetch the skill (on Windows: `winget install --id Git.Git -e`).
 
 ```bash
 npx skills add AgwaB/playback-notes -g

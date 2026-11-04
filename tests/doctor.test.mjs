@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { diagnose, doctorResult, installCommands } from "../scripts/doctor.mjs";
+import { linuxSandboxCause } from "../lib/pdf.mjs";
 
 const NOW = Date.UTC(2026, 10, 3);
 const PACKAGE = JSON.stringify({
@@ -19,6 +20,8 @@ function machine({
   text = {},
   dirs = {},
   nodeVersion = "24.16.0",
+  root = false,
+  arch = "x64",
 }) {
   const set = new Set(files);
   return diagnose({
@@ -27,6 +30,8 @@ function machine({
     home: platform === "win32" ? "C:\\Users\\me" : "/home/me",
     now: NOW,
     nodeVersion,
+    root,
+    arch,
     skillDir: platform === "win32" ? "C:\\skill" : "/skill",
     exists: (file) => set.has(file),
     probe: (file) =>
@@ -63,8 +68,8 @@ test("install commands merge per package manager, once each, in a stable order",
       { winget: ["yt-dlp.yt-dlp"] },
     ]),
     [
-      "winget install --id Gyan.FFmpeg -e --source winget",
-      "winget install --id yt-dlp.yt-dlp -e --source winget",
+      "winget install --id Gyan.FFmpeg -e --source winget --accept-package-agreements --accept-source-agreements",
+      "winget install --id yt-dlp.yt-dlp -e --source winget --accept-package-agreements --accept-source-agreements",
     ],
   );
   assert.deepEqual(
@@ -73,7 +78,14 @@ test("install commands merge per package manager, once each, in a stable order",
       { apt: ["chromium"] },
       { pipx: ["yt-dlp"] },
     ]),
-    ["sudo apt install ffmpeg chromium", "pipx install yt-dlp"],
+    [
+      "sudo apt-get update && sudo apt-get install -y ffmpeg chromium",
+      "pipx install yt-dlp",
+    ],
+  );
+  assert.equal(
+    installCommands([{ apt: ["ffmpeg"] }], { root: true })[0],
+    "apt-get update && apt-get install -y ffmpeg",
   );
 });
 
@@ -98,7 +110,7 @@ test("Windows: each choice says what it lacks and one install for it; found tool
   assert.equal(tool(report, "packages").status, "ok");
   assert.equal(
     tool(report, "ffmpeg").install,
-    "winget install --id Gyan.FFmpeg -e --source winget",
+    "winget install --id Gyan.FFmpeg -e --source winget --accept-package-agreements --accept-source-agreements",
   );
   const { features, flags } = report;
   // ffmpeg and ffprobe come from one package: one command.
@@ -106,14 +118,14 @@ test("Windows: each choice says what it lacks and one install for it; found tool
     for: "a local file or a direct media link",
     ready: false,
     missing: ["ffmpeg", "ffprobe"],
-    install: ["winget install --id Gyan.FFmpeg -e --source winget"],
+    install: ["winget install --id Gyan.FFmpeg -e --source winget --accept-package-agreements --accept-source-agreements"],
   });
   assert.deepEqual(features["youtube-captures"].install, [
-    "winget install --id Gyan.FFmpeg -e --source winget",
+    "winget install --id Gyan.FFmpeg -e --source winget --accept-package-agreements --accept-source-agreements",
   ]);
   assert.equal(features.pdf.ready, true, "Edge serves PDF");
   assert.deepEqual(features["slide-translation"].install, [
-    "winget install --id UB-Mannheim.TesseractOCR -e --source winget",
+    "winget install --id UB-Mannheim.TesseractOCR -e --source winget --accept-package-agreements --accept-source-agreements",
   ]);
   assert.equal(
     flags.browser,
@@ -233,7 +245,7 @@ test("Windows: an old yt-dlp is updated the way it was installed", () => {
     ).install;
   assert.equal(
     update("C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Links\\yt-dlp.exe"),
-    "winget upgrade --id yt-dlp.yt-dlp -e --source winget",
+    "winget upgrade --id yt-dlp.yt-dlp -e --source winget --accept-package-agreements --accept-source-agreements",
   );
   assert.equal(
     update("C:\\Python313\\Scripts\\yt-dlp.exe"),
@@ -312,7 +324,7 @@ test("macOS: one approval sets transcription up (Homebrew, the model and the pre
   assert.deepEqual(report.features.transcription.install, [
     "brew install ffmpeg",
     `mkdir -p "/home/me/.agents/models" && curl -L -o "${model}" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin  # 1.6 GB`,
-    `write /home/me/.agents/playback-notes-asr.json containing {"localAsrExecutable":"/opt/homebrew/bin/whisper-cli","localAsrModel":"${model}"}`,
+    `printf '%s\\n' '{"localAsrExecutable":"/opt/homebrew/bin/whisper-cli","localAsrModel":"${model}"}' > "/home/me/.agents/playback-notes-asr.json"`,
   ]);
   assert.deepEqual(report.features["youtube-captures"].install, [
     "brew install ffmpeg",
@@ -377,7 +389,7 @@ test("Linux without packages or a supported Node: the skill is not ready; choice
   });
   assert.equal(tool(report, "node").status, "unsupported");
   assert.equal(tool(report, "packages").status, "missing");
-  assert.equal(tool(report, "packages").install, "npm ci (in /skill)");
+  assert.equal(tool(report, "packages").install, 'npm ci --prefix "/skill"');
   assert.match(
     tool(report, "tesseract").note,
     /2 languages \(eng yes, kor no\)/,
@@ -387,9 +399,11 @@ test("Linux without packages or a supported Node: the skill is not ready; choice
     /whisper-cli is installed at \/usr\/bin\/whisper-cli, but no model/,
   );
   assert.deepEqual(report.features["youtube-transcription"].install, [
-    "sudo apt install ffmpeg",
+    // whisper-cli is already built: only curl, the model and the preference file are added.
+    "sudo apt-get update && sudo apt-get install -y ffmpeg curl pipx",
     "pipx install yt-dlp",
-    'build whisper.cpp and download the model as the README\'s "Optional: local transcription" describes',
+    'mkdir -p "/home/me/.agents/models" && curl -L -o "/home/me/.agents/models/ggml-large-v3-turbo.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin  # 1.6 GB',
+    `printf '%s\\n' '{"localAsrExecutable":"/usr/bin/whisper-cli","localAsrModel":"/home/me/.agents/models/ggml-large-v3-turbo.bin"}' > "/home/me/.agents/playback-notes-asr.json"`,
   ]);
   const out = doctorResult(report);
   assert.equal(out.issues[0].code, "SKILL_NOT_READY");
@@ -399,6 +413,82 @@ test("Linux without packages or a supported Node: the skill is not ready; choice
   );
   assert.equal(out.issues[1].code, "FEATURES_NEED_INSTALL");
   assert.match(out.issues[1].message, /The install commands need apt/);
+});
+
+test("Linux as root (a container): a source build of whisper.cpp, pipx's yt-dlp, and PDF needs a regular user", () => {
+  const report = machine({
+    platform: "linux",
+    root: true,
+    arch: "arm64",
+    env: { PATH: "/usr/bin:/bin" },
+    files: ["/usr/bin/chromium", "/usr/bin/apt", "/home/me/.local/bin/yt-dlp"],
+    outputs: { "/home/me/.local/bin/yt-dlp": "2026.10.26\n" },
+    text: { "/skill/package.json": "{}" },
+  });
+  assert.equal(
+    tool(report, "yt-dlp").path,
+    "/home/me/.local/bin/yt-dlp",
+    "pipx's directory is searched",
+  );
+  const browser = tool(report, "browser");
+  assert.equal(browser.status, "not-usable");
+  assert.match(browser.note, /regular \(non-root\) user/);
+  assert.deepEqual(report.features.pdf.install, [
+    "run the skill as a regular (non-root) user for PDF",
+  ]);
+  assert.equal(report.flags.browser, undefined);
+  const src = "/home/me/.agents/whisper.cpp";
+  assert.deepEqual(report.features.transcription.install.slice(0, 3), [
+    "apt-get update && apt-get install -y ffmpeg git cmake build-essential curl",
+    `[ -d "${src}" ] || git clone --depth 1 https://github.com/ggml-org/whisper.cpp "${src}"`,
+    `cmake -S "${src}" -B "${src}/build" -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF && cmake --build "${src}/build" -j --config Release --target whisper-cli`,
+  ]);
+  assert.match(
+    report.features.transcription.install.at(-1),
+    /"localAsrExecutable":"\/home\/me\/\.agents\/whisper\.cpp\/build\/bin\/whisper-cli"/,
+  );
+  // x64 keeps GCC's native CPU tuning; a missing browser installs with its sandbox helper.
+  const x64 = machine({
+    platform: "linux",
+    env: { PATH: "/usr/bin" },
+    text: { "/skill/package.json": "{}" },
+  });
+  assert.doesNotMatch(
+    x64.features.transcription.install.join(" "),
+    /GGML_NATIVE/,
+  );
+  assert.deepEqual(x64.features.pdf.install, [
+    "sudo apt-get update && sudo apt-get install -y chromium chromium-sandbox",
+  ]);
+});
+
+test("a Linux PDF launch failure names why Chromium's sandbox did not start, in fixed words", () => {
+  assert.match(
+    linuxSandboxCause(
+      "[FATAL] Running as root without --no-sandbox is not supported",
+    ),
+    /does not run as root/,
+  );
+  assert.match(
+    linuxSandboxCause(
+      "No usable sandbox! If this is a Debian system, please install the chromium-sandbox package",
+    ),
+    /chromium-sandbox package/,
+  );
+  assert.match(
+    linuxSandboxCause(
+      "Failed to move to new namespace: ... errno = Operation not permitted",
+    ),
+    /Docker the default seccomp profile/,
+  );
+  assert.equal(
+    linuxSandboxCause("Target page, context or browser has been closed"),
+    null,
+  );
+  assert.doesNotMatch(
+    linuxSandboxCause("No usable sandbox! /secret/path"),
+    /secret/,
+  );
 });
 
 test("doctor runs on this computer without installing anything", () => {
