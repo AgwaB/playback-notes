@@ -8,6 +8,8 @@ const excluded = new Set([
   "node_modules",
   ".git",
   ".pi",
+  // Private job and report folders (the name before and after the rename).
+  ".playback-notes",
   ".video-summarizer",
   "artifacts",
   "internal",
