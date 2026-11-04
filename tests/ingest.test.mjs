@@ -414,6 +414,25 @@ test("ASR segments matching phrases Whisper invents over music are flagged by ID
   assert.doesNotMatch(flagged.message, /seg-000002/);
 });
 
+test("the language Whisper detected names a local recording's source language", async () => {
+  const model = path.join(root, "mock-model.bin");
+  await writeFile(model, "offline test placeholder, not a speech model");
+  const executable = await fakeTool(
+    path.join(root, "mock-whisper-language"),
+    `import fs from 'node:fs';\nif (process.argv.includes('--version')) { console.log('whisper.cpp version: 1.9.5'); process.exit(0); }\nif (process.argv.includes('--help')) process.exit(7);\nprocess.stderr.write('whisper_full_with_state: auto-detected language: ko (p = 0.982300)\\n');\nconst args=process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output-file')+1]+'.srt','1\\n00:00:00,100 --> 00:00:00,700\\n안녕하세요\\n');\n`,
+  );
+  const result = await extractSource(
+    request({ transcriptFile: null, policy: { ...basePolicy, asr: "local" } }),
+    {
+      workDir: path.join(jobs, "language"),
+      localAsrExecutable: executable,
+      localAsrModel: model,
+    },
+  );
+  assert.equal(result.source.sourceLanguage, "ko");
+  assert.deepEqual(result.raw.localAsrLanguage, { code: "ko", probability: 0.9823 });
+});
+
 test("a whisper build that answers neither --version nor --help keeps its finished transcript (round 7 F1)", async () => {
   const model = path.join(root, "mock-model.bin");
   await writeFile(model, "offline test placeholder, not a speech model");
