@@ -172,6 +172,9 @@ setInterval(() => {}, 1000);`;
     ["-e", script, "--", `--user-data-dir=${profile}`],
     { detached: process.platform !== "win32", stdio: "ignore", windowsHide: true },
   );
+  // The stand-ins never exit on their own: whatever the stop did, end them here so a
+  // failed assertion cannot keep this test file running.
+  browser.unref();
   const alive = (pid) => {
     try {
       process.kill(pid, 0);
@@ -181,6 +184,15 @@ setInterval(() => {}, 1000);`;
     }
   };
   let helper;
+  t.after(() => {
+    for (const pid of [helper, browser.pid])
+      if (pid && alive(pid))
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // Already gone.
+        }
+  });
   for (let i = 0; i < 100 && !helper; i++) {
     await new Promise((resolve) => setTimeout(resolve, 50));
     helper = Number(await fs.readFile(pidFile, "utf8").catch(() => "")) || undefined;
