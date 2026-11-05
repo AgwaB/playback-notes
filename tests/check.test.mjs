@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, copyFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
@@ -69,4 +70,35 @@ test("public checks reject links into internal even when the target exists", asy
       assert.match(message, /link to internal document/);
     return true;
   });
+});
+
+test("README translations name the README.md they follow, whatever its line endings, and their in-page links reach a heading", async (t) => {
+  const fixture = await checkerFixture(t);
+  const english = '<a href="README.ko.md">한국어</a>\n\n[Install](#installation)\n\n## Installation\n';
+  const sum = createHash("sha256").update(english).digest("hex");
+  const korean = (recorded, anchor = "#설치") =>
+    `<!-- README translation source: README.md sha256=${recorded} -->\n<a href="README.md">English</a>\n\n[설치](${anchor})\n\n## 설치\n`;
+  const result = async () => {
+    try {
+      return JSON.parse((await fixture.run()).stdout);
+    } catch (error) {
+      return JSON.parse(error.stdout);
+    }
+  };
+  // A Windows checkout with CRLF line endings matches the same checksum.
+  await writeFile(path.join(fixture.root, "README.md"), english.replace(/\n/g, "\r\n"));
+  await writeFile(path.join(fixture.root, "README.ko.md"), korean(sum));
+  let out = await result();
+  assert.deepEqual(out.errors, []);
+  assert.equal(out.counts.readmeTranslations, 1);
+  // README.md changed but the translation was not brought up to date.
+  await writeFile(path.join(fixture.root, "README.md"), `${english}\nMore.\n`);
+  out = await result();
+  assert.equal(out.status, "failed");
+  assert.match(out.errors.join("\n"), /README\.ko\.md: translated from an older README\.md; .*sha256=[0-9a-f]{64}/);
+  // An in-page link to a heading the translation does not have.
+  await writeFile(path.join(fixture.root, "README.md"), english);
+  await writeFile(path.join(fixture.root, "README.ko.md"), korean(sum, "#설치하기"));
+  out = await result();
+  assert.deepEqual(out.errors, ["README.ko.md: link to a missing heading #설치하기"]);
 });

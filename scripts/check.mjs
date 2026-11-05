@@ -109,9 +109,11 @@ function headingAnchors(markdown) {
 // one of its headings (each language has its own), and its HTML links an existing file.
 // A copy without README.md (a test tree) has nothing to compare.
 const readmeSource = await readFile(path.join(root, "README.md")).catch(() => null);
-const readmeSum =
-  readmeSource && createHash("sha256").update(readmeSource).digest("hex");
 const readmeText = readmeSource?.toString("utf8") ?? "";
+// Over LF line endings: a Windows checkout may convert them to CRLF.
+const readmeSum =
+  readmeSource &&
+  createHash("sha256").update(readmeText.replace(/\r\n/g, "\n")).digest("hex");
 for (const name of (readmeSource ? await readdir(root) : [])
   .filter((entry) => /^README(\.[A-Za-z]{2}(-[A-Za-z]{2,4})?)?\.md$/.test(entry))
   .sort()) {
