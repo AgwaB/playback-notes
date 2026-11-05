@@ -247,6 +247,9 @@ test("install makes files read-only, relinks only directory links, and replaces 
     "templates/report.html",
     "references/execution.md",
     ".playback-notes-install.json",
+    // README.md links its translations and example reports.
+    "README.ko.md",
+    "examples/karpathy-intro-llms/briefing.md",
   ])
     await access(path.join(target, part));
   for (const entry of ["tests", "internal", "docs", "DESIGN.md"])

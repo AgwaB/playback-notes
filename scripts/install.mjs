@@ -25,6 +25,8 @@ const PARTS = [
   "SKILL.md",
   "README.md",
   "LICENSE",
+  // The README links its example reports; its translations are added below.
+  "examples",
   "package.json",
   "package-lock.json",
   "lib",
@@ -161,7 +163,11 @@ async function installLocked(options, source, target, links) {
   try {
     await mkdir(staging, { recursive: true });
     // `withDependencies: false` is an offline-test seam (skips copying node_modules).
-    for (const part of PARTS.filter(
+    // README translations (README.<language>.md), which README.md links.
+    const translations = (await readdir(source)).filter((name) =>
+      /^README\.[A-Za-z-]+\.md$/.test(name),
+    );
+    for (const part of [...PARTS, ...translations].filter(
       (p) => options.withDependencies !== false || p !== "node_modules",
     )) {
       const from =
