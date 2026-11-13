@@ -4,7 +4,7 @@ import { rm } from "node:fs/promises";
 import { fixture } from "./helpers.mjs";
 import { htmlDocument } from "../lib/rendering.mjs";
 import { markdownDocument } from "../lib/markdown.mjs";
-import { labels } from "../lib/view.mjs";
+import { buildView, labels } from "../lib/view.mjs";
 
 const inLanguage = (language, warnings = []) =>
   fixture({
@@ -24,13 +24,28 @@ const warning = (code, message) => ({
 
 test("built-in labels follow the report language where a translation ships, English otherwise", () => {
   const english = labels("en");
-  const korean = labels("ko-KR");
-  assert.deepEqual(Object.keys(korean), Object.keys(english));
-  for (const [key, value] of Object.entries(korean)) {
-    assert.ok(typeof value === "string" && value.trim(), key);
-    assert.notEqual(value, english[key], `${key} is not translated`);
+  for (const [language, regionTags] of [
+    ["ko", ["ko-KR"]],
+    ["ja", ["ja-JP"]],
+    ["zh", ["zh-CN", "zh-Hans"]],
+    ["es", ["es-MX"]],
+  ]) {
+    const translated = labels(language);
+    assert.deepEqual(Object.keys(translated), Object.keys(english), language);
+    for (const [key, value] of Object.entries(translated)) {
+      assert.ok(
+        typeof value === "string" && value.trim(),
+        `${language} ${key}`,
+      );
+      assert.notEqual(
+        value,
+        english[key],
+        `${language} ${key} is not translated`,
+      );
+    }
+    for (const tag of regionTags)
+      assert.deepEqual(labels(tag), translated, tag);
   }
-  assert.deepEqual(labels("ko"), korean);
   assert.deepEqual(labels("fr"), english);
   assert.deepEqual(labels("not a tag"), english);
   assert.deepEqual(labels(undefined), english);
@@ -68,6 +83,37 @@ test("a Korean report renders Korean headings and reworded warnings in HTML and 
   assert.ok(html.includes("At a glance"));
   assert.ok(html.includes("Inspect a frame before citing it"));
   assert.ok(!html.includes("한눈에 보기"));
+});
+
+test("every translation rewords the same extraction warnings", async (t) => {
+  const stored = "Stored English wording of the notice.";
+  const warnings = [
+    "ASR_END_CLAMPED",
+    "FRAMES_CUTS_DROPPED",
+    "ASR_UNVERIFIED",
+    "AUTOMATIC_CAPTIONS",
+    "AUTO_CAPTIONS_REPLACED",
+    "COVERAGE_UNVERIFIED",
+    "DURATION_UNVERIFIED",
+    "FRAMES_SAMPLED",
+    "PLATFORM_MEDIA_DOWNLOADED",
+    "PLATFORM_VIDEO_DOWNLOADED",
+    "PODCAST_PUBLISHER_TRANSCRIPT",
+  ].map((code) => warning(code, stored));
+  const shown = new Map();
+  for (const language of ["ko", "ja", "zh", "es", "fr"]) {
+    const f = await inLanguage(language, warnings);
+    t.after(() => rm(f.root, { recursive: true, force: true }));
+    shown.set(language, buildView(f.bundle).limitations);
+  }
+  // French ships no translation, so each notice keeps its stored text.
+  const count = (language) =>
+    shown.get(language).filter((text) => text === stored).length;
+  assert.equal(count("fr"), warnings.length);
+  for (const language of ["ko", "ja", "zh", "es"]) {
+    assert.equal(count(language), 0, language);
+    assert.equal(shown.get(language).length, shown.get("fr").length, language);
+  }
 });
 
 test("frames that were sampled but never cited are not reported as visuals that were not analyzed", async (t) => {

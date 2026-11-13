@@ -92,7 +92,7 @@ test("recheck-only imported evidence still presents an English correctness cavea
   );
 });
 
-test("built-in controls follow the report language (Korean ships; others stay English) without changing Unicode source text", async (t) => {
+test("built-in controls follow the report language (Korean ships; French stays English) without changing Unicode source text", async (t) => {
   for (const publishTranscript of [true, false]) {
     const f = await fixture({
       mutate(d) {
@@ -112,9 +112,9 @@ test("built-in controls follow the report language (Korean ships; others stay En
     );
     const other = buildView({
       ...f.bundle,
-      report: { ...f.bundle.report, outputLanguage: "ja" },
+      report: { ...f.bundle.report, outputLanguage: "fr" },
     });
-    assert.equal(other.language, "ja");
+    assert.equal(other.language, "fr");
     assert.equal(other.ui.open, "Open source");
     assert.equal(
       other.ui.source,

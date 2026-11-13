@@ -11,7 +11,7 @@
 - [ ] Every figure shows content the text relies on; no figure of people merely talking. Points in a conversation are given to a speaker only where the turn is certain.
 - [ ] The text is written for the reader in the report language: terms of art explained once with the original term beside a translation, no tool vocabulary (chunk, contact sheet, verbatim, frame or segment IDs), no “(translation)” prefix on quotes (the renderer labels them).
 - [ ] Partial evidence/analysis was disclosed and approved for the exact current scope.
-- [ ] The output language matches the explicit preference, otherwise the user's conversation language (English only when unknown), and is recorded in `request.json.outputLanguage`; built-in labels are the skill's own (translated for a Korean report, English otherwise); both modes have appropriate, source-driven depth.
+- [ ] The output language matches the explicit preference, otherwise the user's conversation language (English only when unknown), and is recorded in `request.json.outputLanguage`; built-in labels are the skill's own (translated for Korean, Japanese, Simplified Chinese and Spanish reports, English otherwise); both modes have appropriate, source-driven depth.
 
 ## Documents
 

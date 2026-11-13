@@ -234,8 +234,8 @@ test("English reports preserve known and unknown extraction warnings verbatim", 
 test("a report language without a shipped translation keeps known and unknown extraction warnings as stored", async (t) => {
   const f = await fixture({
     mutate(d) {
-      // Only Korean ships reworded notices (tests/labels.test.mjs); every other language keeps the stored text.
-      d.request.outputLanguage = d.report.outputLanguage = "ja";
+      // French ships no reworded notices (tests/labels.test.mjs lists the languages that do), so it keeps the stored text.
+      d.request.outputLanguage = d.report.outputLanguage = "fr";
       d.evidence.extraction.warnings = [
         {
           code: "AUTOMATIC_CAPTIONS",
