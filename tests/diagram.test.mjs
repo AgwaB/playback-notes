@@ -417,3 +417,96 @@ test("round 6: label width is per grapheme after NFC — wide letters and emoji 
     assert.ok(textWidth(line, 15) <= 200);
   }
 });
+
+const loop = () => {
+  const block = flow(); // a→b, a→c, b→d, c→d, d→e
+  block.id = "loop";
+  block.edges.push({ from: "d", to: "b", label: "Retry", back: true });
+  return block;
+};
+test("a flow returns to an earlier step through back edges: validated, drawn dashed beside the layout, written with ↩ in Markdown", async (t) => {
+  const f = await withBlock(loop(), t);
+  assert.ok(htmlDocument(f.bundle).includes('id="diagram-loop"'));
+  assert.ok(
+    markdownDocument(f.bundle).includes(
+      "Intelligence = academics ↩ Useful subjects first (Retry)",
+    ),
+  );
+  const svg = diagramSvg(loop());
+  assert.equal(svg, diagramSvg(loop()));
+  assert.doesNotMatch(svg, /NaN|undefined/);
+  assert.doesNotMatch(diagramSvg(flow()), /stroke-dasharray/);
+  const dashed = [
+    ...svg.matchAll(/<path d="([^"]+)"[^>]*stroke-dasharray="4 3"/g),
+  ].map((m) => m[1]);
+  assert.equal(dashed.length, 1);
+  // Orthogonal with rounded elbows only; leaves downward and re-enters higher up.
+  assert.match(dashed[0], /^M[\d.]+ [\d.]+(?: (?:[VH][\d.]+|Q[\d. ]+))+$/);
+  const startY = Number(/^M[\d.]+ ([\d.]+)/.exec(dashed[0])[1]);
+  const vertical = [...dashed[0].matchAll(/V([\d.]+)/g)].map((m) => +m[1]);
+  assert.ok(vertical[0] > startY && vertical.at(-1) < startY);
+  const size = (s) => /viewBox="0 0 (\d+) (\d+)"/.exec(s).slice(1).map(Number);
+  // A return into the first row gets room above it; one out of the last row, room below.
+  const chain = (edges) => ({
+    ...stack(),
+    kind: "flow",
+    id: "ring",
+    edges: [
+      { from: "top", to: "mid", label: null },
+      { from: "mid", to: "low", label: null },
+      ...edges,
+    ],
+  });
+  const ring = chain([{ from: "low", to: "top", label: null, back: true }]);
+  assert.ok(size(diagramSvg(ring))[1] >= size(diagramSvg(chain([])))[1] + 40);
+  assert.equal(size(diagramSvg(ring))[0], 640);
+  // Rows that fill the width leave no room for the lane and its label: the drawing widens.
+  const wide = flow();
+  wide.nodes.push(node("f", "Third branch"));
+  wide.edges.push(
+    { from: "a", to: "f", label: null },
+    { from: "f", to: "d", label: null },
+    { from: "e", to: "a", label: "Feedback loop", back: true },
+  );
+  assert.ok(size(diagramSvg(wide))[0] > 640);
+  await withBlock(wide, t);
+
+  const rejected = [
+    ["forward in disguise", [{ from: "a", to: "d", label: null, back: true }]],
+    ["same row", [{ from: "b", to: "c", label: null, back: true }]],
+    [
+      "three returns",
+      [
+        { from: "d", to: "a", label: null, back: true },
+        { from: "e", to: "a", label: null, back: true },
+        { from: "e", to: "b", label: null, back: true },
+      ],
+    ],
+    ["not a boolean", [{ from: "d", to: "a", label: null, back: "yes" }]],
+  ];
+  for (const [name, edges] of rejected) {
+    const block = flow();
+    block.edges.push(...edges);
+    await assert.rejects(
+      () =>
+        fixture({
+          mutate(d) {
+            d.report.sections[0].blocks.push(block);
+          },
+        }),
+      (error) => /INVALID_CONTRACT|SCHEMA/.test(error.code),
+      name,
+    );
+  }
+  const onlyBack = chain([]);
+  onlyBack.edges = [{ from: "mid", to: "top", label: null, back: true }];
+  await assert.rejects(
+    () =>
+      fixture({
+        mutate(d) {
+          d.report.sections[0].blocks.push(onlyBack);
+        },
+      }),
+    (error) => /INVALID_CONTRACT|SCHEMA/.test(error.code),
+  );
+});

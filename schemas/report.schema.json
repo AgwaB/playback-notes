@@ -390,6 +390,9 @@
                       "null"
                     ],
                     "maxLength": 14
+                  },
+                  "back": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
