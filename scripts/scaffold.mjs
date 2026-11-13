@@ -66,7 +66,7 @@ export async function scaffold(options) {
   const card = [
     `report.json skeleton written for ${evidence.id} (mode ${request.mode}, language ${request.outputLanguage}); evidenceRef is already correct — do not recompute it.`,
     "Required: title (string), summary (≥1 statement), sections [{id, heading, blocks ≥1}], caveats (statements, may be empty).",
-    'Statement: {"text", "attribution": "source"|"interpretation", "citations": [{"kind": "segment"|"frame", "id"}]}.',
+    'Statement: {"text", "attribution": "source"|"interpretation", "citations": [{"kind": "segment"|"frame", "id"}]}. "source" = what the recording says or shows, also summarized or translated; "interpretation" = only your own inference or evaluation.',
     "Blocks: paragraph{statement} · list{ordered, items[statement]} · table{columns[string], rows[[statement]]} · quote{statement, verbatim} · code{text, language|null, attribution, citations} · figure{frameId, alt, caption(statement citing that frame), screenText?[{text, translation}]} · diagram{kind stack|flow, id, title, alt, nodes, edges[{from, to, label, back?: true for a return to an earlier step}], caption} — see references/report-authoring.md.",
     segments.length
       ? `Segments: ${segments.length} (${segments[0].id} … ${segments.at(-1).id}); chunks: ${evidence.chunks.map((c) => c.id).join(", ")} — list the ones you read in analysis-ledger.json reviewedChunkIds.`
