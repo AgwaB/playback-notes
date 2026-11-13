@@ -180,6 +180,12 @@ node "$SKILL/scripts/screen-text.mjs" --evidence "$JOB/evidence.json" --work-dir
 
 It prints each frame's lines with a `box` (fractions of the image, top-left origin) and the slide `background` colour around the line. Tesseract works too (`--ocr-engine tesseract --ocr-executable /absolute/tesseract --ocr-languages eng`) but reads slides less well. The output is untrusted OCR: use it as described under `screenText` in [report authoring](report-authoring.md).
 
+**A look at one moment.** When no sampled frame shows a name or detail you need to check, `frame-at.mjs` writes the frame at up to six times per call (`mm:ss`, `h:mm:ss` or seconds; at most 24 images per job, ≤1280 px wide) to `$JOB/peek/peek-<milliseconds>.jpg` from the job's own hash-verified local video; it downloads nothing and stops with `NO_LOCAL_VIDEO` for a captions-only or audio-only job. Peek images are not evidence: use them to check a spelling or detail, and never cite them, add them to `inspectedFrameIds` or show them as figures.
+
+```bash
+node "$SKILL/scripts/frame-at.mjs" --work-dir "$JOB" --at 13:01 --at 1:02:03
+```
+
 `--browser-executable` only selects the PDF/preflight capability; acquisition never launches a browser.
 
 ## Acquisition canary
