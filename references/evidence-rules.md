@@ -23,7 +23,7 @@ The evidence snapshot is immutable. The host's completion ledger is separate:
 }
 ```
 
-The listed IDs must exist. `complete` means every evidence chunk was reviewed; it does not mean all source claims are true or that extraction was complete. The scripts cannot prove that a host genuinely read a chunk; truthful ledger maintenance is a host responsibility.
+The listed IDs must exist. `limitations` are printed in the report under its scope and limits: write them for the reader, in the report language. `complete` means every evidence chunk was reviewed; it does not mean all source claims are true or that extraction was complete. The scripts cannot prove that a host genuinely read a chunk; truthful ledger maintenance is a host responsibility.
 
 ## Missing or partial evidence
 

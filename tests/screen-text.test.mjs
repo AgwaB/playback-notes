@@ -56,7 +56,7 @@ test("on-screen text renders beside its translation under the figure, escaped, i
     );
     assert.match(
       table,
-      /<th scope="col">On-screen text<\/th><th scope="col">Translation<\/th>/,
+      /<th scope="col">화면 속 글자<\/th><th scope="col">번역<\/th>/,
     );
     assert.match(
       table,
@@ -65,7 +65,7 @@ test("on-screen text renders beside its translation under the figure, escaped, i
     assert.ok(!table.includes("<script>"), "screen text is escaped");
     assert.match(table, /&lt;script&gt;x&lt;\/script&gt;/);
     const markdown = markdownDocument(f.bundle);
-    assert.match(markdown, /\| On-screen text +\| Translation +\|/);
+    assert.match(markdown, /\| 화면 속 글자 +\| 번역 +\|/);
     assert.match(
       markdown,
       /\| What's a derivative\? +\| 도함수란 무엇인가\? +\|/,
@@ -82,7 +82,7 @@ test("a figure without on-screen text has no table", async () => {
   const f = await fixture(withFigure(undefined));
   try {
     assert.ok(!htmlDocument(f.bundle).includes('class="screen-text"'));
-    assert.ok(!markdownDocument(f.bundle).includes("On-screen text"));
+    assert.ok(!markdownDocument(f.bundle).includes("화면 속 글자"));
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }
@@ -147,8 +147,8 @@ test("positioned on-screen text draws the translation over a copy of the frame b
       /<img src="assets\/frame-0001.jpg" alt="Slide titled What&#x27;s a derivative\?"/,
     );
     assert.match(figure, /<img src="assets\/frame-0001.jpg" alt=""/);
-    assert.match(figure, />Original</);
-    assert.match(figure, />Translated</);
+    assert.match(figure, />원본</);
+    assert.match(figure, />번역본</);
     const spans = [
       ...figure.matchAll(
         /<span style="([^"]*)">([^<]*(?:&lt;[^<]*)*)<\/span>/g,
@@ -172,7 +172,7 @@ test("positioned on-screen text draws the translation over a copy of the frame b
     assert.ok(size(spans[0]) > size(spans[1]));
     assert.match(
       figure,
-      /<details class="screen-text-list"><summary>On-screen text<\/summary><table class="screen-text">/,
+      /<details class="screen-text-list"><summary>화면 속 글자<\/summary><table class="screen-text">/,
     );
     // Markdown cannot draw over an image: the same lines stay a table.
     assert.match(

@@ -92,7 +92,7 @@ test("recheck-only imported evidence still presents an English correctness cavea
   );
 });
 
-test("English controls do not change report language or Unicode source text", async (t) => {
+test("built-in controls follow the report language (Korean ships; others stay English) without changing Unicode source text", async (t) => {
   for (const publishTranscript of [true, false]) {
     const f = await fixture({
       mutate(d) {
@@ -103,15 +103,31 @@ test("English controls do not change report language or Unicode source text", as
     t.after(() => rm(f.root, { recursive: true, force: true }));
     const view = buildView(f.bundle);
     assert.equal(view.language, "ko");
-    assert.equal(view.ui.open, "Open source");
-    assert.equal(view.ui.close, "Close");
-    assert.equal(view.ui.interpretation, "Interpretation");
+    assert.equal(view.ui.open, "원본 보기");
+    assert.equal(view.ui.close, "닫기");
+    assert.equal(view.ui.interpretation, "해석");
     assert.equal(
       view.ui.source,
+      publishTranscript ? "원본과 전사본" : "원본과 시각",
+    );
+    const other = buildView({
+      ...f.bundle,
+      report: { ...f.bundle.report, outputLanguage: "ja" },
+    });
+    assert.equal(other.language, "ja");
+    assert.equal(other.ui.open, "Open source");
+    assert.equal(
+      other.ui.source,
       publishTranscript ? "Source & transcript" : "Source & timestamps",
     );
     assert.equal(
       view.privacyNotice,
+      publishTranscript
+        ? "이 문서에는 원본 전사본이 들어 있습니다."
+        : "이 문서에는 전체 전사본이 들어 있지 않습니다. 원본을 참고하세요.",
+    );
+    assert.equal(
+      other.privacyNotice,
       publishTranscript
         ? "This document contains the source transcript."
         : "The full transcript is not included in this document; see the source.",

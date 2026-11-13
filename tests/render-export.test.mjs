@@ -231,11 +231,11 @@ test("English reports preserve known and unknown extraction warnings verbatim", 
   assert.ok(markdownDocument(f.bundle).includes("The source captions were automatically generated and may contain transcription errors."));
 });
 
-test("non-English report tags do not translate known or unknown extraction warnings", async (t) => {
+test("a report language without a shipped translation keeps known and unknown extraction warnings as stored", async (t) => {
   const f = await fixture({
     mutate(d) {
-      // UI warnings stay English regardless of the requested report language.
-      d.request.outputLanguage = d.report.outputLanguage = "ko";
+      // Only Korean ships reworded notices (tests/labels.test.mjs); every other language keeps the stored text.
+      d.request.outputLanguage = d.report.outputLanguage = "ja";
       d.evidence.extraction.warnings = [
         {
           code: "AUTOMATIC_CAPTIONS",
