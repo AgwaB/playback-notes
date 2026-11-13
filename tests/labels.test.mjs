@@ -69,3 +69,31 @@ test("a Korean report renders Korean headings and reworded warnings in HTML and 
   assert.ok(html.includes("Inspect a frame before citing it"));
   assert.ok(!html.includes("한눈에 보기"));
 });
+
+test("frames that were sampled but never cited are not reported as visuals that were not analyzed", async (t) => {
+  const frame = {
+    id: "frame-0001",
+    timestampMs: 1000,
+    assetPath: "assets/frame-0001.jpg",
+    sha256: "0".repeat(64),
+    width: 320,
+    height: 180,
+    ocrText: null,
+  };
+  const sampled = await fixture({
+    mutate(d) {
+      d.evidence.frames = [frame];
+    },
+  });
+  t.after(() => rm(sampled.root, { recursive: true, force: true }));
+  const english = labels("en");
+  const html = htmlDocument(sampled.bundle);
+  assert.ok(html.includes(english.sampledOnly));
+  assert.ok(!html.includes(english.noVisual));
+  assert.ok(markdownDocument(sampled.bundle).includes(english.sampledOnly));
+  const transcriptOnly = await fixture();
+  t.after(() => rm(transcriptOnly.root, { recursive: true, force: true }));
+  const plain = htmlDocument(transcriptOnly.bundle);
+  assert.ok(plain.includes(english.noVisual));
+  assert.ok(!plain.includes(english.sampledOnly));
+});
