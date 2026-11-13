@@ -8,3 +8,4 @@ coverage/
 *.tgz
 .DS_Store
 /internal/
+AGENTS.md
