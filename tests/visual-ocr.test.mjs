@@ -98,7 +98,10 @@ test("local OCR samples scene changes with ffmpeg, OCRs via the explicit executa
   assert.ok(result.frames.length >= 1, "at least one readable frame");
   const first = result.frames[0];
   assert.match(first.assetPath, /^assets\/frame-\d{4}\.jpg$/);
-  assert.equal(first.ocrText, "Storage temperature is at most 20 C <script>x</script>");
+  assert.equal(
+    first.ocrText,
+    "Storage temperature is at most 20 C <script>x</script>",
+  );
   assert.ok(first.width === 320 && first.height === 180);
   assert.ok(
     Number.isInteger(first.timestampMs) &&
@@ -344,7 +347,10 @@ test("playability mapping distinguishes bot check, age restriction, unavailable 
   // YouTube localizes the reason to the requester's region (here Korean).
   assert.deepEqual(
     code(() =>
-      assertPlayability({ status: "ERROR", reason: "이 동영상은 볼 수 없습니다." }),
+      assertPlayability({
+        status: "ERROR",
+        reason: "이 동영상은 볼 수 없습니다.",
+      }),
     ),
     ["SOURCE_UNAVAILABLE", "video-unavailable"],
   );
@@ -571,7 +577,11 @@ test("vision engine: TSV parsing, bottom-region filtering, similarity dedupe and
     [],
     "unchanged subtitle and persistent logo are not re-reported",
   );
-  assert.deepEqual(f3, ["Second caption"], "only the new caption line surfaces");
+  assert.deepEqual(
+    f3,
+    ["Second caption"],
+    "only the new caption line surfaces",
+  );
   // End-to-end with a mock vision helper emitting boxes: bottom region keeps the caption, drops the logo.
   const work = path.join(jobs, "vision");
   const helper = await fakeTool(
@@ -666,8 +676,14 @@ test("dedupe is exact: any changed character inside a line is new evidence; only
       "The dose is eight milligrams per day.",
       "The dose is eighty milligrams per day.",
     ],
-    ["Discard this document after review.", "Retain this document after review."],
-    ["Only managers approve this result.", "Also managers approve this result."],
+    [
+      "Discard this document after review.",
+      "Retain this document after review.",
+    ],
+    [
+      "Only managers approve this result.",
+      "Also managers approve this result.",
+    ],
     [
       "This is not ready; there is no alarm active.",
       "This is now ready; there is no alarm active.",
@@ -678,7 +694,10 @@ test("dedupe is exact: any changed character inside a line is new evidence; only
     ],
     ["Do not open the box", "Do now open the box"],
     ["abcdefghijklmnop", "abcdefghijklmnoq"],
-    ["Archive footage credit: Example News", "Archive footage credit; Example News"],
+    [
+      "Archive footage credit: Example News",
+      "Archive footage credit; Example News",
+    ],
     // Edge/quote normalisation must not lose evidence either.
     [".5 mg daily", "5 mg daily"],
     ["The span is 5'", "The span is 5"],
@@ -772,14 +791,20 @@ test("duplicate-PTS scene source: one image per metadata record, every image bou
       capped.frames.map((frame) => frame.timestampMs),
       result.frames.slice(0, cap).map((frame) => frame.timestampMs),
     );
-    assert.equal(new Set(capped.frames.map((frame) => frame.sha256)).size, cap,
-      "distinct source images are retained even when their timestamps are equal");
+    assert.equal(
+      new Set(capped.frames.map((frame) => frame.sha256)).size,
+      cap,
+      "distinct source images are retained even when their timestamps are equal",
+    );
     assert.equal(capped.raw.visualOcr.coverage.complete, false);
   }
 });
 
 test("interval sampling keeps real source timestamps, survives quoted and Unicode work directories, and a caption returning after the window is reported again", async () => {
-  const work = path.join(jobs, process.platform === "win32" ? "it's café odd" : "it's: café odd");
+  const work = path.join(
+    jobs,
+    process.platform === "win32" ? "it's café odd" : "it's: café odd",
+  );
   // Mock vision: caption A on frames 1–2, nothing on 3–11, caption A again on frame 12.
   const helper = await fakeTool(
     path.join(root, "vision-window"),
@@ -957,6 +982,16 @@ test("visual: frames — key-scene sampling without OCR keeps every sampled fram
       (w) => w.code === "PLATFORM_VIDEO_DOWNLOADED",
     ),
   );
+  // The kept download is named for prepare to record; a local source has no such file.
+  assert.equal(
+    ytResult.frameVideoPath,
+    path.join(ytResult.assetRoot, "video.bin"),
+  );
+  assert.equal(
+    await rf(ytResult.frameVideoPath, "hex"),
+    await rf(media, "hex"),
+  );
+  assert.equal("frameVideoPath" in result, false);
   assert.equal(
     ytResult.extraction.method,
     "user-transcript",

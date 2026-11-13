@@ -16,7 +16,11 @@ import {
   issue,
 } from "../lib/io.mjs";
 import { cacheKey, existingEvidence, requestRevision } from "../lib/cache.mjs";
-import { makeEvidence, chunkDocument, indexEvidence } from "../lib/evidence.mjs";
+import {
+  makeEvidence,
+  chunkDocument,
+  indexEvidence,
+} from "../lib/evidence.mjs";
 import { normalizeRequest } from "../lib/validation.mjs";
 import { isMain, optionsFor, required, result, runCli } from "../lib/cli.mjs";
 import { validateCodeSwitch } from "../lib/asr-language-recheck.mjs";
@@ -41,7 +45,8 @@ async function provided(file, executable = false) {
   if (!file) return { status: "unavailable", version: null };
   try {
     await access(file, executable ? constants.X_OK : constants.R_OK);
-    if (!(await stat(file)).isFile()) return { status: "unavailable", version: null };
+    if (!(await stat(file)).isFile())
+      return { status: "unavailable", version: null };
     return { status: "available", version: null };
   } catch {
     return { status: "unavailable", version: null };
@@ -59,7 +64,10 @@ async function capabilities(options, workDir) {
       ffmpeg: tool("ffmpeg", probeDir),
       ffprobe: tool("ffprobe", probeDir),
       localAsrExecutable: await provided(options["local-asr-executable"], true),
-      localAsrGpuExecutable: await provided(options["local-asr-gpu-executable"], true),
+      localAsrGpuExecutable: await provided(
+        options["local-asr-gpu-executable"],
+        true,
+      ),
       localAsrModel: await provided(options["local-asr-model"]),
       pdfBrowser: await provided(options["browser-executable"], true),
       ocr: await provided(
@@ -93,21 +101,38 @@ async function existingPreference(paths) {
 }
 
 export async function preferredGpu(options, request, preferencePaths) {
-  if (request.policy.asr !== "local" || options["local-asr-gpu-executable"] ||
-      !options["local-asr-executable"] || !options["local-asr-model"]) return options;
+  if (
+    request.policy.asr !== "local" ||
+    options["local-asr-gpu-executable"] ||
+    !options["local-asr-executable"] ||
+    !options["local-asr-model"]
+  )
+    return options;
   try {
     const found = await existingPreference(preferencePaths);
     if (!found || found.info.size > 64 * 1024) return options;
     const preferencePath = found.path;
     const preference = JSON.parse(jsonText(await readFile(preferencePath)));
-    const values = [preference.localAsrExecutable, preference.localAsrModel, preference.localAsrGpuExecutable];
-    if (!values.every((value) => typeof value === "string" && path.isAbsolute(value))) return options;
+    const values = [
+      preference.localAsrExecutable,
+      preference.localAsrModel,
+      preference.localAsrGpuExecutable,
+    ];
+    if (
+      !values.every(
+        (value) => typeof value === "string" && path.isAbsolute(value),
+      )
+    )
+      return options;
     const normalize = (value) => {
       const resolved = path.resolve(value);
       return process.platform === "win32" ? resolved.toLowerCase() : resolved;
     };
-    if (normalize(values[0]) !== normalize(options["local-asr-executable"]) ||
-        normalize(values[1]) !== normalize(options["local-asr-model"])) return options;
+    if (
+      normalize(values[0]) !== normalize(options["local-asr-executable"]) ||
+      normalize(values[1]) !== normalize(options["local-asr-model"])
+    )
+      return options;
     return { ...options, "local-asr-gpu-executable": values[2] };
   } catch {
     // A missing or malformed optional preference must not disable explicit CPU ASR.
@@ -123,7 +148,10 @@ export async function preferredGpu(options, request, preferencePaths) {
  */
 export const WINDOWS_WORK_DIR_MAX = 200;
 
-export async function prepare(options, { asrPreferencePath = asrPreferencePaths() } = {}) {
+export async function prepare(
+  options,
+  { asrPreferencePath = asrPreferencePaths() } = {},
+) {
   required(options, ["request", "work-dir"]);
   const workDirLength = path.resolve(options["work-dir"]).length;
   if (process.platform === "win32" && workDirLength > WINDOWS_WORK_DIR_MAX)
@@ -151,7 +179,10 @@ export async function prepare(options, { asrPreferencePath = asrPreferencePaths(
                 .map(([name]) => name)
                 .join(", ") || "none"
             }. Optional tools require a user decision before installation; host vision is not inferred. capabilities.json reflects the options passed to this call.${
-              process.platform !== "win32" && [caps.ffmpeg, caps.ffprobe].some((cap) => cap.status === "unavailable")
+              process.platform !== "win32" &&
+              [caps.ffmpeg, caps.ffprobe].some(
+                (cap) => cap.status === "unavailable",
+              )
                 ? " Media tools must be available in the extraction worker's tool directories: /opt/homebrew/bin, /usr/local/bin, /usr/bin or /bin."
                 : ""
             }`,
@@ -251,6 +282,12 @@ export async function prepare(options, { asrPreferencePath = asrPreferencePaths(
     const mediaPath = extracted.mediaPath
       ? path.resolve(extracted.mediaPath)
       : null;
+    // A YouTube video stream downloaded only to sample frames stays in its extraction
+    // folder and is neither the player's media nor copied anywhere. Its place in the job
+    // and its hash are recorded so frame-at.mjs reads it only while it is unchanged.
+    const frameVideo = extracted.frameVideoPath
+      ? path.resolve(extracted.frameVideoPath)
+      : null;
     const manifest = {
       schemaVersion: 1,
       cacheKey: key,
@@ -261,6 +298,15 @@ export async function prepare(options, { asrPreferencePath = asrPreferencePaths(
       transcriptFile: request.transcriptFile,
       mediaPath,
       mediaSha256: mediaPath ? await fileHash(mediaPath) : null,
+      ...(frameVideo
+        ? {
+            frameVideoPath: path
+              .relative(workDir, frameVideo)
+              .split(path.sep)
+              .join("/"),
+            frameVideoSha256: await fileHash(frameVideo),
+          }
+        : {}),
       locator: evidence.source.playback.locator,
       createdAt: new Date().toISOString(),
     };

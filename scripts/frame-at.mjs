@@ -9,6 +9,7 @@ import {
   AppError,
   artifact,
   atomicWrite,
+  containedFile,
   exists,
   issue,
   readJson,
@@ -201,33 +202,60 @@ export async function frameAt(options) {
         "EVIDENCE_MISMATCH",
         "Evidence differs from this acquisition job.",
       );
-    if (!manifest.mediaPath)
-      throw noVideo(
-        "This job has no local media file: it was prepared from captions or a transcript only, so there is no video to take a frame from.",
-      );
-    // Only the file prepare recorded, and only while it still has the recorded hash. A
-    // video track streamed separately for frame sampling has no recorded hash and is not used.
-    let snapshot;
-    try {
-      snapshot = await verifiedMediaSnapshot(
-        manifest.mediaPath,
-        manifest.mediaSha256,
-      );
-    } catch (error) {
-      if (error instanceof AppError) throw error;
-      throw new AppError(
-        "EVIDENCE_MISMATCH",
-        "The job's local media can no longer be read at its recorded path.",
-      );
-    }
+    // Only a file prepare recorded, and only while it still has the recorded hash: the
+    // job's media, or when that is absent or audio only, the video stream a YouTube job
+    // downloaded to sample frames. That one is recorded relative to the job and must be a
+    // regular file inside it.
+    const recorded = [];
+    if (manifest.mediaPath)
+      recorded.push({
+        locate: () => manifest.mediaPath,
+        sha256: manifest.mediaSha256,
+      });
+    if (manifest.frameVideoPath)
+      recorded.push({
+        locate: () =>
+          containedFile(
+            workDir,
+            manifest.frameVideoPath,
+            Number.MAX_SAFE_INTEGER,
+          ),
+        sha256: manifest.frameVideoSha256,
+      });
     const toolOptions = { workDir, timeoutMs: TOOL_MS };
-    const probed = await probeVideo(manifest.mediaPath, toolOptions);
-    if (!probed.video)
+    let media = null;
+    for (const candidate of recorded) {
+      let file, snapshot;
+      try {
+        file = await candidate.locate();
+        snapshot = await verifiedMediaSnapshot(file, candidate.sha256);
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(
+          "EVIDENCE_MISMATCH",
+          "The job's local media can no longer be read at its recorded path.",
+        );
+      }
+      const probed = await probeVideo(file, toolOptions);
+      if (probed.video) {
+        media = { file, snapshot, durationMs: probed.durationMs };
+        break;
+      }
+    }
+    if (!media)
       throw noVideo(
-        "This job's local media has no video stream (audio only), so there is no frame to take.",
+        // A job prepared before the frame video's hash was recorded: the file may still be
+        // there, but nothing says it is the one the frames came from.
+        !manifest.frameVideoPath &&
+          evidence.data?.source?.kind === "youtube" &&
+          evidence.data.frames?.length
+          ? "This job's frames were sampled from a downloaded video stream whose hash was not recorded (the job was prepared by an earlier version), so that file cannot be verified and is not used."
+          : recorded.length
+            ? "This job's local media has no video stream (audio only), so there is no frame to take."
+            : "This job has no local media file: it was prepared from captions or a transcript only, so there is no video to take a frame from.",
       );
     const known = evidence.data?.source?.durationMs;
-    const durationMs = Number.isSafeInteger(known) ? known : probed.durationMs;
+    const durationMs = Number.isSafeInteger(known) ? known : media.durationMs;
     const late =
       durationMs === null ? [] : times.filter((ms) => ms > durationMs);
     if (late.length)
@@ -252,7 +280,7 @@ export async function frameAt(options) {
         `A job keeps at most ${MAX_PEEKS} peek images (${existing.length} exist). Delete those no longer needed from ${PEEK_DIR}/ and retry, or sample frames in prepare.`,
       );
     for (const peek of wanted) {
-      peek.bytes = await frameBytes(manifest.mediaPath, peek.ms, toolOptions);
+      peek.bytes = await frameBytes(media.file, peek.ms, toolOptions);
       if (!peek.bytes.length)
         throw new AppError(
           "FRAME_UNAVAILABLE",
@@ -269,8 +297,8 @@ export async function frameAt(options) {
     // would yield frames of something else, so nothing is written unless it is unchanged.
     if (
       !sameFileSnapshot(
-        snapshot,
-        await stat(manifest.mediaPath, { bigint: true }),
+        media.snapshot,
+        await stat(media.file, { bigint: true }),
       )
     )
       throw new AppError(

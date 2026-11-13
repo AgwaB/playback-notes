@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import {
   appendFile,
   copyFile,
+  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -17,6 +18,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { fakeTool } from "./fake-tool.mjs";
 import { sampleData } from "./helpers.mjs";
 import { exists, fileHash, jsonBytes, sha256 } from "../lib/io.mjs";
 import { jpegSize } from "../lib/ingest-worker.mjs";
@@ -456,4 +458,202 @@ test("frame-at stays inside the job: verified media only, no links, no stray dir
     code: "INVALID_CONTRACT",
     message: "Missing --work-dir.",
   });
+});
+
+test("frame-at reads a YouTube job's downloaded frame video at its recorded place and hash only", async () => {
+  // What the fake yt-dlp streams: a 360p video-only file, red for six seconds, then blue.
+  const stream = path.join(root, "stream.mp4");
+  await ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=red:s=640x360:r=2:d=6",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=blue:s=640x360:r=2:d=6",
+    "-filter_complex",
+    "[0:v][1:v]concat=n=2:v=1:a=0",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "ultrafast",
+    "-pix_fmt",
+    "yuv420p",
+    "-y",
+    stream,
+  ]);
+  // Every start is logged, to show that only prepare ever ran it.
+  const runs = path.join(root, "yt-dlp-runs.txt");
+  const ytDlp = await fakeTool(
+    path.join(root, "yt-dlp"),
+    `import { appendFileSync, readFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(runs)}, "run\\n");\nprocess.stdout.write(readFileSync(${JSON.stringify(stream)}));\n`,
+  );
+  const srt = path.join(root, "talk.srt");
+  await writeFile(srt, "1\n00:00:00,500 --> 00:00:01,500\nA spoken line.\n");
+  const request = path.join(root, "youtube-request.json");
+  await writeFile(
+    request,
+    jsonBytes({
+      schemaVersion: 1,
+      mode: "briefing",
+      outputLanguage: "en",
+      source: {
+        kind: "url",
+        value: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      },
+      transcriptFile: srt,
+      policy: { asr: "off", visual: "frames", extractTimeoutMs: 30000 },
+    }),
+  );
+  const work = path.join(root, "youtube");
+  const options = {
+    request,
+    "work-dir": work,
+    "yt-dlp-executable": ytDlp,
+    "ocr-sample-seconds": 2,
+  };
+  const response = await prepare(options, { asrPreferencePath: [] });
+  assert.equal(response.status, "ok");
+  assert.ok(
+    response.issues.some((w) => w.code === "PLATFORM_VIDEO_DOWNLOADED"),
+  );
+  // The download is not the player's media; it is recorded on its own, relative to the job.
+  const manifestFile = path.join(work, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
+  assert.equal(manifest.mediaPath, null);
+  assert.equal(manifest.mediaSha256, null);
+  assert.match(manifest.frameVideoPath, /^ingest-[A-Za-z0-9]{6}\/video\.bin$/);
+  assert.equal(manifest.frameVideoSha256, await fileHash(stream));
+  assert.equal(
+    await fileHash(path.join(work, manifest.frameVideoPath)),
+    manifest.frameVideoSha256,
+  );
+  // Every file of the job with its hash, peek images aside.
+  const tree = async (directory) => {
+    const files = {};
+    for (const entry of await readdir(directory, {
+      recursive: true,
+      withFileTypes: true,
+    })) {
+      const file = path.join(entry.parentPath, entry.name);
+      const relative = path.relative(directory, file);
+      if (entry.isFile() && relative.split(path.sep)[0] !== "peek")
+        files[relative] = await fileHash(file);
+    }
+    return files;
+  };
+  const before = await tree(work);
+  const outside = (await readdir(root)).sort();
+
+  const taken = await frameAt({ "work-dir": work, at: ["0:03", "9.5"] });
+  assert.equal(taken.status, "ok");
+  assert.deepEqual(
+    taken.peeks.map((peek) => [peek.path, peek.width, peek.height]),
+    [
+      ["peek/peek-3000.jpg", 640, 360],
+      ["peek/peek-9500.jpg", 640, 360],
+    ],
+  );
+  const [red, blue] = await Promise.all(
+    taken.peeks.map((peek) => colour(path.join(work, peek.path))),
+  );
+  assert.ok(red[0] > 200 && red[2] < 60, `3 s is red: ${red}`);
+  assert.ok(blue[2] > 200 && blue[0] < 60, `9.5 s is blue: ${blue}`);
+  assert.equal(taken.issues[0].code, "PEEK_NOT_EVIDENCE");
+  // Only peek/ was added: evidence, manifest, ledger, frames and the download are as
+  // they were, nothing appeared beside the job, and yt-dlp did not run again.
+  assert.deepEqual(await tree(work), before);
+  assert.deepEqual(await readdir(path.join(work, "peek")), [
+    "peek-3000.jpg",
+    "peek-9500.jpg",
+  ]);
+  assert.deepEqual((await readdir(root)).sort(), outside);
+  assert.equal(await readFile(runs, "utf8"), "run\n");
+
+  // A second prepare reuses the evidence: the manifest and the kept download still agree.
+  const again = await prepare(options, { asrPreferencePath: [] });
+  assert.equal(again.artifacts[0].status, "reused");
+  assert.equal(await readFile(runs, "utf8"), "run\n");
+  assert.equal((await tree(work))["manifest.json"], before["manifest.json"]);
+  assert.equal(
+    (await frameAt({ "work-dir": work, at: ["0:03"] })).peeks[0].path,
+    "peek/peek-3000.jpg",
+  );
+
+  // Copies of the job, each with one thing changed. The path is relative, so a copy is a job.
+  let copies = 0;
+  const variant = async (mutate) => {
+    const copy = path.join(root, `youtube-${++copies}`);
+    await cp(work, copy, { recursive: true });
+    await rm(path.join(copy, "peek"), { recursive: true });
+    const changed = structuredClone(manifest);
+    await mutate?.(changed, path.join(copy, manifest.frameVideoPath));
+    await writeFile(path.join(copy, "manifest.json"), jsonBytes(changed));
+    return copy;
+  };
+  const refused = async (copy, expected) => {
+    await assert.rejects(frameAt({ "work-dir": copy, at: ["0:03"] }), expected);
+    assert.equal(await exists(path.join(copy, "peek")), false);
+  };
+  await refused(
+    await variant((_, file) => appendFile(file, Buffer.from([0]))),
+    { code: "EVIDENCE_MISMATCH" },
+  );
+  await refused(await variant((_, file) => rm(file)), {
+    code: "EVIDENCE_MISMATCH",
+    message: /can no longer be read/,
+  });
+  // The same bytes reached through a linked folder are outside the job, and so is a
+  // recorded path that leaves it.
+  await refused(
+    await variant(async (_, file) => {
+      const elsewhere = path.join(root, "elsewhere");
+      await mkdir(elsewhere);
+      await copyFile(stream, path.join(elsewhere, "video.bin"));
+      await rm(path.dirname(file), { recursive: true });
+      await symlink(
+        elsewhere,
+        path.dirname(file),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+    }),
+    { code: "UNSAFE_PATH" },
+  );
+  await refused(
+    await variant((changed) => {
+      changed.frameVideoPath = "../stream.mp4";
+    }),
+    { code: "UNSAFE_PATH" },
+  );
+  // A job prepared before the hash was recorded: the file is there, but unverifiable.
+  const older = await variant((changed) => {
+    delete changed.frameVideoPath;
+    delete changed.frameVideoSha256;
+  });
+  await refused(older, {
+    code: "NO_LOCAL_VIDEO",
+    message: /hash was not recorded.*Nothing was downloaded/,
+  });
+  const run = await cli(["--work-dir", older, "--at", "0:03"]);
+  assert.equal(run.code, 1);
+  assert.equal(run.response.issues[0].code, "NO_LOCAL_VIDEO");
+  // Audio downloaded for transcription is the job's media; the frame video is still the
+  // only video. A real local video, when the job has one, comes first.
+  const withAudio = await variant(async (changed) => {
+    changed.mediaPath = audio;
+    changed.mediaSha256 = await fileHash(audio);
+  });
+  assert.equal(
+    (await frameAt({ "work-dir": withAudio, at: ["0:03"] })).peeks[0].width,
+    640,
+  );
+  const withVideo = await variant(async (changed) => {
+    changed.mediaPath = video;
+    changed.mediaSha256 = await fileHash(video);
+  });
+  assert.equal(
+    (await frameAt({ "work-dir": withVideo, at: ["0:03"] })).peeks[0].width,
+    1280,
+  );
 });
